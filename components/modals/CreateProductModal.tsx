@@ -162,7 +162,7 @@ export const CreateProductModal = ({
                   ))}
                   <div className="flex gap-3 p-2 border border-slate-100 border-dashed rounded-[24px] mt-4">
                     <input placeholder="新增流程节点名称..." value={stageInput} onChange={(e) => setStageInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onAddStage()} className="flex-1 bg-transparent px-4 py-2 text-xs outline-none" />
-                    <button onClick={onAddStage} className="bg-indigo-600 text-white p-2.5 rounded-xl shadow-lg shadow-indigo-100"><Plus className="w-4 h-4" /></button>
+                    <button onClick={() => onAddStage()} className="bg-indigo-600 text-white p-2.5 rounded-xl shadow-lg shadow-indigo-100"><Plus className="w-4 h-4" /></button>
                   </div>
                 </div>
               </div>
