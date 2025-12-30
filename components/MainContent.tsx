@@ -33,8 +33,16 @@ export const MainContent = ({
     {/* Header Section */}
     <div className="p-10 flex gap-10 border-b border-slate-100">
       <div className="w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0 flex items-center justify-center">
-        {selectedProduct.image ? (
-          <img src={selectedProduct.image} className="w-full h-full object-cover" />
+        {selectedProduct.image && selectedProduct.image.startsWith('data:') ? (
+          <img 
+            src={selectedProduct.image} 
+            className="w-full h-full object-cover" 
+            onError={(e) => {
+              // 如果 Base64 损坏，显示占位图
+              (e.target as HTMLImageElement).src = "";
+              (e.target as HTMLImageElement).className = "hidden";
+            }}
+          />
         ) : (
           <div className="flex flex-col items-center text-slate-300">
             <ImageIcon className="w-16 h-16 mb-2 opacity-20" />

@@ -68,11 +68,23 @@ export const CreateProductModal = ({
                 <p className="text-xs font-medium opacity-50">暂无封面图片</p>
               </div>
             )}
-            <label className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-all">
+            <label className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-all gap-2">
               <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
               <div className="bg-white/90 backdrop-blur px-6 py-3 rounded-2xl font-bold text-sm text-slate-900">
                 {newProduct.image ? "更换封面" : "上传封面"}
               </div>
+              {newProduct.image && (
+                <button 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setNewProduct({ ...newProduct, image: "" });
+                  }}
+                  className="bg-red-500/90 backdrop-blur px-4 py-3 rounded-2xl font-bold text-sm text-white hover:bg-red-600 transition-all"
+                >
+                  删除
+                </button>
+              )}
             </label>
           </div>
           <div className="mt-10 space-y-6">

@@ -7,7 +7,12 @@ import { Product, StageStatus } from '@/types'
 // 将 Prisma 的数据格式转换为前端定义的类型格式
 function mapProduct(dbProduct: any): Product {
   return {
-    ...dbProduct,
+    id: dbProduct.id,
+    code: dbProduct.code,
+    name: dbProduct.name,
+    status: dbProduct.status as "developing" | "archived",
+    isSynced: dbProduct.isSynced,
+    image: dbProduct.image || "",
     createdAt: dbProduct.createdAt.toISOString().split('T')[0],
     customFields: dbProduct.customFields.map((cf: any) => ({
       id: cf.id,
