@@ -240,6 +240,14 @@ export async function toggleSyncStatus(id: string, currentSync: boolean) {
   revalidatePath('/')
 }
 
+// 删除款式
+export async function deleteProduct(id: string) {
+  await prisma.product.delete({
+    where: { id }
+  })
+  revalidatePath('/')
+}
+
 // 更新节点信息 (状态和参数)
 export async function updateStageInfo(params: {
   stageId: string,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, CheckCircle2, Clock, RefreshCw, History, Plus, Layers, FileText, X, Download, FileArchive, ImageIcon } from "lucide-react";
+import { Edit3, CheckCircle2, Clock, RefreshCw, History, Plus, Layers, FileText, X, Download, FileArchive, ImageIcon, Trash2 } from "lucide-react";
 import { Product, SampleVersion } from "@/types";
 
 interface MainContentProps {
@@ -8,6 +8,7 @@ interface MainContentProps {
   activeSampleId: string;
   setActiveSampleId: (id: string) => void;
   onEditProduct: (p: Product) => void;
+  onDeleteProduct: (id: string) => void;
   onToggleArchive: (id: string) => void;
   onToggleSync: (id: string) => void;
   onNodeRegister: (stage: any) => void;
@@ -22,14 +23,21 @@ export const MainContent = ({
   activeSampleId,
   setActiveSampleId,
   onEditProduct,
+  onDeleteProduct,
   onToggleArchive,
   onToggleSync,
   onNodeRegister,
   onLogOpen,
   onAddSample,
   onDeleteSample
-}: MainContentProps) => (
-  <main className="flex-1 flex flex-col bg-white overflow-y-auto no-scrollbar">
+}: MainContentProps) => {
+  // 判断商品是否可以删除：所有样衣的所有节点都处于 "pending" 状态
+  const canDelete = selectedProduct.samples.every(s => 
+    s.stages.every(st => st.status === 'pending')
+  );
+
+  return (
+    <main className="flex-1 flex flex-col bg-white overflow-y-auto no-scrollbar">
     {/* Header Section */}
     <div className="p-10 flex gap-10 border-b border-slate-100">
       <div className="w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0 flex items-center justify-center">
@@ -50,7 +58,20 @@ export const MainContent = ({
           </div>
         )}
         <div className="absolute top-4 right-4 flex gap-2">
-          <button onClick={() => onEditProduct(selectedProduct)} className="p-2 bg-white/90 backdrop-blur rounded-lg shadow-sm text-slate-600 hover:text-indigo-600"><Edit3 className="w-4 h-4" /></button>
+          <button onClick={() => onEditProduct(selectedProduct)} className="p-2 bg-white/90 backdrop-blur rounded-lg shadow-sm text-slate-600 hover:text-indigo-600" title="编辑款式"><Edit3 className="w-4 h-4" /></button>
+          {canDelete && (
+            <button 
+              onClick={() => {
+                if (confirm(`确定要彻底删除款式“${selectedProduct.code}”吗？此操作不可撤销。`)) {
+                  onDeleteProduct(selectedProduct.id);
+                }
+              }} 
+              className="p-2 bg-white/90 backdrop-blur rounded-lg shadow-sm text-red-400 hover:text-red-600 hover:bg-red-50"
+              title="删除款式"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 

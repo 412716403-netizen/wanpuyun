@@ -17,7 +17,8 @@ import {
   getStageTemplates,
   deleteStageTemplate,
   createSampleVersion,
-  deleteSampleVersion
+  deleteSampleVersion,
+  deleteProduct
 } from "./actions";
 import { 
   Product, 
@@ -209,6 +210,19 @@ export default function Dashboard() {
     }
   };
 
+  const handleDeleteProduct = async (id: string) => {
+    await deleteProduct(id);
+    const data = await getProducts();
+    setProducts(data);
+    if (data.length > 0) {
+      setSelectedProductId(data[0].id);
+      setActiveSampleId(data[0].samples[0].id);
+    } else {
+      setSelectedProductId("");
+      setActiveSampleId("");
+    }
+  };
+
   if (loading) return <div className="flex h-screen items-center justify-center bg-[#F3F4F6] text-slate-500">加载中...</div>;
 
   return (
@@ -239,6 +253,7 @@ export default function Dashboard() {
           activeSampleId={activeSampleId}
           setActiveSampleId={setActiveSampleId}
           onEditProduct={handleEditProduct}
+          onDeleteProduct={handleDeleteProduct}
           onToggleArchive={async (id) => {
             const p = products.find((product: Product) => product.id === id);
             if (p) {
