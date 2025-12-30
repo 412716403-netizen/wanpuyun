@@ -263,5 +263,6 @@ export const MainContent = ({
       </div>
     </div>
   </main>
-);
+  );
+};
 
