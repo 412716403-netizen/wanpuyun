@@ -140,6 +140,29 @@ export async function createProduct(data: {
   return product.id
 }
 
+// 更新款式基本信息
+export async function updateProduct(id: string, data: {
+  code: string,
+  name: string,
+  image?: string,
+  customFields: { label: string, value: string }[]
+}) {
+  await prisma.product.update({
+    where: { id },
+    data: {
+      code: data.code,
+      name: data.name,
+      image: data.image,
+      customFields: {
+        deleteMany: {},
+        create: data.customFields.map(f => ({ label: f.label, value: f.value }))
+      }
+    }
+  })
+
+  revalidatePath('/')
+}
+
 // 新增样衣轮次
 export async function createSampleVersion(productId: string, name: string) {
   // 1. 获取当前产品最近的一个样衣轮次，用于复制流程节点结构

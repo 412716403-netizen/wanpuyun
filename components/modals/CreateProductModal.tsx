@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Plus, ChevronUp, ChevronDown } from "lucide-react";
+import { X, Plus, ChevronUp, ChevronDown, Image as ImageIcon } from "lucide-react";
 import { ProductCustomField } from "@/types";
 
 interface CreateProductModalProps {
@@ -55,11 +55,20 @@ export const CreateProductModal = ({
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={onClose} />
       <div className="relative bg-white w-full max-w-5xl h-[85vh] rounded-[48px] shadow-2xl flex overflow-hidden animate-in slide-in-from-bottom-10 duration-500">
         <div className="w-[450px] bg-slate-50 p-12 flex flex-col flex-shrink-0">
-          <div className="flex-1 rounded-[40px] border-4 border-white shadow-2xl overflow-hidden relative group">
-            <img src={newProduct.image || "https://images.unsplash.com/photo-1576566588028-4147f3842f27?q=80&w=600"} className="w-full h-full object-cover" />
+          <div className="flex-1 rounded-[40px] border-4 border-white shadow-2xl overflow-hidden relative group bg-slate-200/50">
+            {newProduct.image ? (
+              <img src={newProduct.image} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-slate-400">
+                <ImageIcon className="w-12 h-12 mb-4 opacity-20" />
+                <p className="text-xs font-medium opacity-50">暂无封面图片</p>
+              </div>
+            )}
             <label className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-all">
               <input type="file" className="hidden" accept="image/*" onChange={handleImageChange} />
-              <div className="bg-white/90 backdrop-blur px-6 py-3 rounded-2xl font-bold text-sm text-slate-900">更换封面</div>
+              <div className="bg-white/90 backdrop-blur px-6 py-3 rounded-2xl font-bold text-sm text-slate-900">
+                {newProduct.image ? "更换封面" : "上传封面"}
+              </div>
             </label>
           </div>
           <div className="mt-10 space-y-6">
@@ -81,12 +90,27 @@ export const CreateProductModal = ({
           <div className="space-y-10">
             <div>
               <label className="text-xs font-bold text-slate-900 mb-4 block">扩展信息字段 (自定义)</label>
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-4 mb-4">
                 {newProduct.customFields.map(field => (
-                  <div key={field.id} className="bg-slate-50 p-1 rounded-2xl flex items-center gap-2 border border-slate-100 group/field relative">
-                    <input className="text-[10px] font-bold text-slate-400 pl-4 w-16 bg-transparent outline-none border-r border-slate-200" value={field.label} onChange={(e) => onUpdateCustomField(field.id, 'label', e.target.value)} />
-                    <input className="flex-1 bg-white px-4 py-2.5 rounded-xl text-sm outline-none shadow-sm" value={field.value} onChange={(e) => onUpdateCustomField(field.id, 'value', e.target.value)} />
-                    <button onClick={() => onRemoveCustomField(field.id)} className="absolute -right-2 -top-2 opacity-0 group-hover/field:opacity-100 bg-white text-red-500 rounded-full p-1 border border-red-50 shadow-sm"><X className="w-3 h-3" /></button>
+                  <div key={field.id} className="bg-white rounded-[20px] flex items-center border border-slate-100 group/field relative shadow-sm h-14 hover:border-indigo-200 transition-all">
+                    <div className="bg-slate-50/50 h-full flex items-center px-4 rounded-l-[19px] border-r border-slate-100 min-w-[85px]">
+                      <input 
+                        className="bg-transparent text-[11px] font-bold text-slate-400 uppercase tracking-tight w-full outline-none" 
+                        value={field.label} 
+                        onChange={(e) => onUpdateCustomField(field.id, 'label', e.target.value)} 
+                      />
+                    </div>
+                    <input 
+                      className="flex-1 px-5 text-sm font-bold text-slate-800 outline-none bg-transparent" 
+                      value={field.value} 
+                      onChange={(e) => onUpdateCustomField(field.id, 'value', e.target.value)} 
+                    />
+                    <button 
+                      onClick={() => onRemoveCustomField(field.id)} 
+                      className="absolute -right-2 -top-2 opacity-0 group-hover/field:opacity-100 bg-white text-red-500 rounded-full p-1.5 border border-red-100 shadow-md hover:bg-red-50 transition-all z-10"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   </div>
                 ))}
               </div>

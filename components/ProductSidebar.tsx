@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Filter, ImageIcon } from "lucide-react";
+import { Plus, Search, Filter, ImageIcon, X } from "lucide-react";
 import { Product } from "@/types";
 
 interface ProductSidebarProps {
@@ -8,6 +8,8 @@ interface ProductSidebarProps {
   selectedProductId: string;
   activeTab: "developing" | "archived";
   setActiveTab: (tab: "developing" | "archived") => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
   onSelectProduct: (id: string) => void;
   onCreateOpen: () => void;
   isFilterOpen: boolean;
@@ -23,6 +25,8 @@ export const ProductSidebar = ({
   selectedProductId,
   activeTab,
   setActiveTab,
+  searchQuery,
+  setSearchQuery,
   onSelectProduct,
   onCreateOpen,
   isFilterOpen,
@@ -47,20 +51,25 @@ export const ProductSidebar = ({
         <button 
           key={tab}
           onClick={() => setActiveTab(tab)}
-          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === tab ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50'}`}
+          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${activeTab === tab ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50'}`}
         >
           {tab === 'developing' ? '开发中' : '已归档'}
+          <span className={`px-1.5 py-0.5 rounded-md text-[9px] ${activeTab === tab ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+            {products.filter(p => p.status === tab).length}
+          </span>
         </button>
       ))}
     </div>
 
     <div className="px-6 pb-4">
-      <div className="relative group flex items-center gap-2">
+      <div className="relative group flex items-center gap-2 mb-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500" />
           <input 
             type="text" 
             placeholder="搜索款号、品名..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
           />
         </div>
@@ -103,6 +112,41 @@ export const ProductSidebar = ({
           )}
         </div>
       </div>
+
+      {/* 已选筛选标签显示区 */}
+      {(filters.syncStatus !== 'all' || filters.stageName !== 'all' || searchQuery) && (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {searchQuery && (
+            <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-bold border border-slate-200">
+              搜索: {searchQuery}
+              <button onClick={() => setSearchQuery("")}><X className="w-2.5 h-2.5" /></button>
+            </div>
+          )}
+          {filters.syncStatus !== 'all' && (
+            <div className="flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold border border-indigo-100">
+              状态: {filters.syncStatus === 'synced' ? '已同步' : '未同步'}
+              <button onClick={() => setFilters({...filters, syncStatus: 'all'})}><X className="w-2.5 h-2.5" /></button>
+            </div>
+          )}
+          {filters.stageName !== 'all' && (
+            <div className="flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold border border-indigo-100">
+              节点: {filters.stageName}
+              <button onClick={() => setFilters({...filters, stageName: 'all'})}><X className="w-2.5 h-2.5" /></button>
+            </div>
+          )}
+          {(filters.syncStatus !== 'all' || filters.stageName !== 'all' || searchQuery) && (
+            <button 
+              onClick={() => {
+                setFilters({ syncStatus: 'all', stageName: 'all' });
+                setSearchQuery("");
+              }}
+              className="text-[10px] text-slate-400 font-bold hover:text-indigo-600 ml-1"
+            >
+              清除全部
+            </button>
+          )}
+        </div>
+      )}
     </div>
 
     <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-3 no-scrollbar">

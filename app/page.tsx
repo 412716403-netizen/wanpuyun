@@ -13,6 +13,7 @@ import {
   toggleProductStatus, 
   toggleSyncStatus, 
   updateStageInfo,
+  updateProduct,
   getStageTemplates,
   deleteStageTemplate,
   createSampleVersion,
@@ -33,6 +34,7 @@ export default function Dashboard() {
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [activeSampleId, setActiveSampleId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"developing" | "archived">("developing");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // 初始化加载数据
   useEffect(() => {
@@ -75,7 +77,7 @@ export default function Dashboard() {
   // Create Product states
   const [newProduct, setNewProduct] = useState({ code: "", name: "", image: "", customFields: [] as ProductCustomField[] });
   const [newProductFieldInput, setNewProductFieldInput] = useState({ label: "", value: "" });
-  const [newProductStages, setNewProductStages] = useState<string[]>(["设计与工艺单", "纱线与色样", "横机编程", "衣片机织", "套口组装"]);
+  const [newProductStages, setNewProductStages] = useState<string[]>([]);
   const [stageInput, setStageInput] = useState("");
 
   // --- Derived Data ---
@@ -84,7 +86,18 @@ export default function Dashboard() {
   const uniqueStageNames = Array.from(new Set(products.flatMap((p: Product) => p.samples?.flatMap(s => s.stages.map(st => st.name)) || [])));
 
   const filteredProducts = products.filter((p: Product) => {
+    // 1. 状态 Tab 过滤
     if (p.status !== activeTab) return false;
+    
+    // 2. 搜索框过滤 (货号或名称)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchCode = p.code.toLowerCase().includes(q);
+      const matchName = p.name.toLowerCase().includes(q);
+      if (!matchCode && !matchName) return false;
+    }
+
+    // 3. 高级筛选
     if (filters.syncStatus === 'synced' && !p.isSynced) return false;
     if (filters.syncStatus === 'unsynced' && p.isSynced) return false;
     if (filters.stageName !== 'all') {
@@ -116,9 +129,14 @@ export default function Dashboard() {
   };
 
   const handleCreateProduct = async () => {
-    if (isEditMode) {
-      // 暂未实现编辑款式，后续可添加 updateProduct Action
-      setProducts(products.map((p: Product) => p.id === selectedProductId ? { ...p, ...newProduct } : p));
+    if (isEditMode && selectedProductId) {
+      await updateProduct(selectedProductId, {
+        code: newProduct.code,
+        name: newProduct.name,
+        image: newProduct.image,
+        customFields: newProduct.customFields.map(f => ({ label: f.label, value: f.value }))
+      });
+      await refreshData();
     } else {
       const newId = await createProduct({
         code: newProduct.code,
@@ -132,7 +150,8 @@ export default function Dashboard() {
     }
     setIsCreateModalOpen(false);
     setIsEditMode(false);
-    setNewProduct({ code: "", name: "", image: "", customFields: [{ id: "cf1", label: "针型", value: "12G" }, { id: "cf2", label: "成分", value: "100% Cashmere" }, { id: "cf3", label: "颜色", value: "" }, { id: "cf4", label: "季节", value: "2024 AW" }] });
+    setNewProduct({ code: "", name: "", image: "", customFields: [] });
+    setNewProductStages([]);
   };
 
   const handleEditProduct = (p: Product) => {
@@ -202,6 +221,8 @@ export default function Dashboard() {
         selectedProductId={selectedProductId}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
         onSelectProduct={handleSelectProduct}
         onCreateOpen={() => { setIsEditMode(false); setIsCreateModalOpen(true); }}
         isFilterOpen={isFilterOpen}
