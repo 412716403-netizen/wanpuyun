@@ -1,0 +1,159 @@
+import React from 'react';
+import { Plus, Search, Filter, ImageIcon } from "lucide-react";
+import { Product } from "@/types";
+
+interface ProductSidebarProps {
+  products: Product[];
+  filteredProducts: Product[];
+  selectedProductId: string;
+  activeTab: "developing" | "archived";
+  setActiveTab: (tab: "developing" | "archived") => void;
+  onSelectProduct: (id: string) => void;
+  onCreateOpen: () => void;
+  isFilterOpen: boolean;
+  setIsFilterOpen: (open: boolean) => void;
+  filters: any;
+  setFilters: (f: any) => void;
+  uniqueStageNames: string[];
+}
+
+export const ProductSidebar = ({
+  products,
+  filteredProducts,
+  selectedProductId,
+  activeTab,
+  setActiveTab,
+  onSelectProduct,
+  onCreateOpen,
+  isFilterOpen,
+  setIsFilterOpen,
+  filters,
+  setFilters,
+  uniqueStageNames
+}: ProductSidebarProps) => (
+  <aside className="w-[340px] bg-white border-r border-slate-200 flex flex-col flex-shrink-0">
+    <div className="p-6 border-b border-slate-50">
+      <button 
+        onClick={onCreateOpen}
+        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 active:scale-[0.98] transition-all"
+      >
+        <Plus className="w-4 h-4" />
+        录入新款式
+      </button>
+    </div>
+
+    <div className="px-6 py-4 flex gap-2">
+      {(['developing', 'archived'] as const).map(tab => (
+        <button 
+          key={tab}
+          onClick={() => setActiveTab(tab)}
+          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === tab ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:bg-slate-50'}`}
+        >
+          {tab === 'developing' ? '开发中' : '已归档'}
+        </button>
+      ))}
+    </div>
+
+    <div className="px-6 pb-4">
+      <div className="relative group flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500" />
+          <input 
+            type="text" 
+            placeholder="搜索款号、品名..."
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
+          />
+        </div>
+        <div className="relative">
+          <button 
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className={`p-2.5 rounded-xl border transition-all ${isFilterOpen || filters.syncStatus !== 'all' || filters.stageName !== 'all' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-100 text-slate-400 hover:text-indigo-50'}`}
+          >
+            <Filter className="w-4 h-4" />
+          </button>
+
+          {isFilterOpen && (
+            <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 p-4">
+              <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                <span className="text-xs font-bold text-slate-900">高级筛选</span>
+                <button onClick={() => setFilters({ syncStatus: 'all', stageName: 'all' })} className="text-[10px] text-indigo-600 font-bold">重置全部</button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">同步状态</label>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {['all', 'synced', 'unsynced'].map(s => (
+                      <button key={s} onClick={() => setFilters({...filters, syncStatus: s})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${filters.syncStatus === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
+                        {s === 'all' ? '全部' : s === 'synced' ? '已同步' : '未同步'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">正在进行的流程</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button onClick={() => setFilters({...filters, stageName: 'all'})} className={`py-1 px-2 rounded-lg text-[10px] font-bold border ${filters.stageName === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-50'}`}>全部</button>
+                    {uniqueStageNames.map(name => (
+                      <button key={name} onClick={() => setFilters({...filters, stageName: name})} className={`py-1 px-2 rounded-lg text-[10px] font-bold border ${filters.stageName === name ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{name}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+
+    <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-3 no-scrollbar">
+      {filteredProducts.map(product => {
+        const hasError = product.samples.some(s => s.stages.some(st => st.status === 'error'));
+        
+        return (
+          <div 
+            key={product.id}
+            onClick={() => onSelectProduct(product.id)}
+            className={`p-4 rounded-2xl cursor-pointer border transition-all relative ${selectedProductId === product.id ? 'bg-indigo-50/50 border-indigo-200 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}
+          >
+            {/* 异常红点提醒 */}
+            {hasError && (
+              <div className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full shadow-sm shadow-red-200 animate-pulse z-10" />
+            )}
+
+            <div className="flex gap-4">
+              <div className="w-16 h-16 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0">
+                {product.image ? <img src={product.image} className="w-full h-full object-cover" /> : <ImageIcon className="w-full h-full p-4 text-slate-300" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-bold text-slate-900 truncate">{product.code}</span>
+                  {product.isSynced && <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded">● 已生成</span>}
+                </div>
+                <h4 className="text-xs text-slate-600 font-medium truncate mb-2">{product.name}</h4>
+                <div className="flex flex-col gap-1.5">
+                  {product.samples.map(sample => {
+                    const inProgressStage = sample.stages.find(st => st.status === 'in_progress');
+                    const errorStage = sample.stages.find(st => st.status === 'error');
+                    
+                    return (
+                      <div key={sample.id} className="flex items-center gap-2 text-[10px] text-slate-400">
+                        <div className={`w-1 h-1 rounded-full ${errorStage ? 'bg-red-500' : inProgressStage ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
+                        <span className={`truncate ${errorStage ? 'text-red-500 font-bold' : ''}`}>
+                          {sample.name}: {errorStage ? `异常 (${errorStage.name})` : inProgressStage ? inProgressStage.name : '待开始'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-slate-100 flex gap-4 text-[10px] text-slate-400 font-medium overflow-hidden">
+              {product.customFields.slice(0, 3).map(cf => <span key={cf.id} className="truncate max-w-[80px]">{cf.value}</span>)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </aside>
+);
+

@@ -1,0 +1,329 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { GlobalNav } from "@/components/GlobalNav";
+import { ProductSidebar } from "@/components/ProductSidebar";
+import { MainContent } from "@/components/MainContent";
+import { CreateProductModal } from "@/components/modals/CreateProductModal";
+import { NodeInfoModal } from "@/components/modals/NodeInfoModal";
+import { LogModal } from "@/components/modals/LogModal";
+import { 
+  getProducts, 
+  createProduct, 
+  toggleProductStatus, 
+  toggleSyncStatus, 
+  updateStageInfo,
+  getStageTemplates,
+  deleteStageTemplate,
+  createSampleVersion,
+  deleteSampleVersion
+} from "./actions";
+import { 
+  Product, 
+  Stage, 
+  ProductCustomField, 
+  StageStatus 
+} from "@/types";
+
+export default function Dashboard() {
+  // --- States ---
+  const [products, setProducts] = useState<Product[]>([]);
+  const [templates, setTemplates] = useState<{ id: string, name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedProductId, setSelectedProductId] = useState<string>("");
+  const [activeSampleId, setActiveSampleId] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"developing" | "archived">("developing");
+
+  // 初始化加载数据
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [productsData, templatesData] = await Promise.all([
+          getProducts(),
+          getStageTemplates()
+        ]);
+        setProducts(productsData);
+        setTemplates(templatesData);
+        if (productsData.length > 0) {
+          setSelectedProductId(productsData[0].id);
+          setActiveSampleId(productsData[0].samples[0].id);
+        }
+      } catch (error) {
+        console.error("Failed to load data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+  
+  // Modals visibility
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isNodeModalOpen, setIsNodeModalOpen] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  // Edit/Register states
+  const [editingStage, setEditingStage] = useState<{ productId: string, sampleId: string, stageId: string } | null>(null);
+  const [tempFields, setTempFields] = useState<{ id: string, label: string, value: string }[]>([]);
+  const [tempAttachments, setTempAttachments] = useState<{ id: string, fileName: string, fileUrl: string }[]>([]);
+  const [tempStatus, setTempStatus] = useState<StageStatus>("pending");
+  const [fieldInput, setFieldInput] = useState({ label: "", value: "" });
+  const [filters, setFilters] = useState({ syncStatus: 'all', stageName: 'all' });
+
+  // Create Product states
+  const [newProduct, setNewProduct] = useState({ code: "", name: "", image: "", customFields: [] as ProductCustomField[] });
+  const [newProductFieldInput, setNewProductFieldInput] = useState({ label: "", value: "" });
+  const [newProductStages, setNewProductStages] = useState<string[]>(["设计与工艺单", "纱线与色样", "横机编程", "衣片机织", "套口组装"]);
+  const [stageInput, setStageInput] = useState("");
+
+  // --- Derived Data ---
+  const selectedProduct = products.find((p: Product) => p.id === selectedProductId) || products[0] || null;
+  const currentSample = selectedProduct?.samples?.find(s => s.id === activeSampleId) || selectedProduct?.samples?.[0] || null;
+  const uniqueStageNames = Array.from(new Set(products.flatMap((p: Product) => p.samples?.flatMap(s => s.stages.map(st => st.name)) || [])));
+
+  const filteredProducts = products.filter((p: Product) => {
+    if (p.status !== activeTab) return false;
+    if (filters.syncStatus === 'synced' && !p.isSynced) return false;
+    if (filters.syncStatus === 'unsynced' && p.isSynced) return false;
+    if (filters.stageName !== 'all') {
+      const hasStageInProgress = p.samples?.some(s => s.stages.some(st => st.name === filters.stageName && st.status === 'in_progress'));
+      if (!hasStageInProgress) return false;
+    }
+    return true;
+  });
+
+  // 刷新数据
+  const refreshData = async () => {
+    try {
+      const [productsData, templatesData] = await Promise.all([
+        getProducts(),
+        getStageTemplates()
+      ]);
+      setProducts(productsData);
+      setTemplates(templatesData);
+    } catch (error) {
+      console.error("Refresh failed:", error);
+    }
+  };
+
+  // --- Handlers ---
+  const handleSelectProduct = (id: string) => {
+    setSelectedProductId(id);
+    const product = products.find(p => p.id === id);
+    if (product) setActiveSampleId(product.samples[0].id);
+  };
+
+  const handleCreateProduct = async () => {
+    if (isEditMode) {
+      // 暂未实现编辑款式，后续可添加 updateProduct Action
+      setProducts(products.map((p: Product) => p.id === selectedProductId ? { ...p, ...newProduct } : p));
+    } else {
+      const newId = await createProduct({
+        code: newProduct.code,
+        name: newProduct.name,
+        image: newProduct.image,
+        customFields: newProduct.customFields.map(f => ({ label: f.label, value: f.value })),
+        stages: newProductStages
+      });
+      await refreshData();
+      handleSelectProduct(newId);
+    }
+    setIsCreateModalOpen(false);
+    setIsEditMode(false);
+    setNewProduct({ code: "", name: "", image: "", customFields: [{ id: "cf1", label: "针型", value: "12G" }, { id: "cf2", label: "成分", value: "100% Cashmere" }, { id: "cf3", label: "颜色", value: "" }, { id: "cf4", label: "季节", value: "2024 AW" }] });
+  };
+
+  const handleEditProduct = (p: Product) => {
+    setNewProduct({ code: p.code, name: p.name, image: p.image || "", customFields: [...p.customFields] });
+    setIsEditMode(true);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleSaveNodeInfo = async () => {
+    if (!editingStage || !selectedProduct) return;
+    const { sampleId, stageId } = editingStage;
+    
+    await updateStageInfo({
+      stageId,
+      sampleId,
+      status: tempStatus,
+      fields: tempFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
+      attachments: tempAttachments.map(a => ({ fileName: a.fileName, fileUrl: a.fileUrl })),
+      userName: "Jun Zheng", // 实际应从 Auth 获取
+      logDetail: `更新状态为: ${tempStatus}`
+    });
+
+    await refreshData();
+    setIsNodeModalOpen(false);
+  };
+
+  const handleAddSample = async () => {
+    if (!selectedProduct) return;
+    
+    // 自动计算新轮次名称，如“二样”、“三样”
+    const sampleNames = ["头样", "二样", "三样", "四样", "五样", "大货样"];
+    const currentCount = selectedProduct.samples.length;
+    const nextName = sampleNames[currentCount] || `${currentCount + 1}样`;
+
+    const newSampleId = await createSampleVersion(selectedProduct.id, nextName);
+    await refreshData();
+    setActiveSampleId(newSampleId);
+  };
+
+  const handleDeleteSample = async (sampleId: string) => {
+    if (!selectedProduct) return;
+    
+    await deleteSampleVersion(sampleId);
+    
+    // 重新获取数据
+    const data = await getProducts();
+    setProducts(data);
+    
+    // 重新计算选中状态：如果删掉的是当前激活的，切换到第一个
+    const currentProduct = data.find((p: Product) => p.id === selectedProductId);
+    if (currentProduct && currentProduct.samples.length > 0) {
+      if (activeSampleId === sampleId) {
+        setActiveSampleId(currentProduct.samples[0].id);
+      }
+    }
+  };
+
+  if (loading) return <div className="flex h-screen items-center justify-center bg-[#F3F4F6] text-slate-500">加载中...</div>;
+
+  return (
+    <div className="flex h-screen bg-[#F3F4F6] overflow-hidden">
+      <GlobalNav />
+      
+      <ProductSidebar 
+        products={products}
+        filteredProducts={filteredProducts}
+        selectedProductId={selectedProductId}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onSelectProduct={handleSelectProduct}
+        onCreateOpen={() => { setIsEditMode(false); setIsCreateModalOpen(true); }}
+        isFilterOpen={isFilterOpen}
+        setIsFilterOpen={setIsFilterOpen}
+        filters={filters}
+        setFilters={setFilters}
+        uniqueStageNames={uniqueStageNames}
+      />
+
+      {selectedProduct ? (
+        <MainContent 
+          selectedProduct={selectedProduct}
+          currentSample={currentSample}
+          activeSampleId={activeSampleId}
+          setActiveSampleId={setActiveSampleId}
+          onEditProduct={handleEditProduct}
+          onToggleArchive={async (id) => {
+            const p = products.find((product: Product) => product.id === id);
+            if (p) {
+              await toggleProductStatus(id, p.status);
+              await refreshData();
+            }
+          }}
+          onToggleSync={async (id) => {
+            const p = products.find((product: Product) => product.id === id);
+            if (p) {
+              await toggleSyncStatus(id, p.isSynced);
+              await refreshData();
+            }
+          }}
+          onNodeRegister={(stage) => {
+            if (!selectedProduct) return;
+            setEditingStage({ productId: selectedProduct.id, sampleId: activeSampleId, stageId: stage.id });
+            setTempFields(stage.fields.map((f: any) => ({ id: f.id, label: f.label, value: String(f.value) })));
+            setTempAttachments(stage.attachments || []);
+            setTempStatus(stage.status);
+            setIsNodeModalOpen(true);
+          }}
+          onLogOpen={() => setIsLogModalOpen(true)}
+          onAddSample={handleAddSample}
+          onDeleteSample={handleDeleteSample}
+        />
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center bg-white m-6 rounded-[48px] shadow-sm">
+          <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6">
+            <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-500 rounded-full animate-spin" />
+          </div>
+          <h3 className="text-xl font-bold text-slate-900 mb-2">正在准备数据</h3>
+          <p className="text-slate-400 text-sm">如果长时间没有反应，请检查数据库连接</p>
+        </div>
+      )}
+
+      {isCreateModalOpen && (
+        <CreateProductModal 
+          isEditMode={isEditMode}
+          newProduct={newProduct}
+          setNewProduct={setNewProduct}
+          newProductFieldInput={newProductFieldInput}
+          setNewProductFieldInput={setNewProductFieldInput}
+          newProductStages={newProductStages}
+          stageInput={stageInput}
+          setStageInput={setStageInput}
+          onAddCustomField={() => {
+            if (newProductFieldInput.label.trim()) {
+              setNewProduct({ ...newProduct, customFields: [...newProduct.customFields, { id: `cf-${Date.now()}`, label: newProductFieldInput.label.trim(), value: newProductFieldInput.value.trim() }] });
+              setNewProductFieldInput({ label: "", value: "" });
+            }
+          }}
+          onRemoveCustomField={(id) => setNewProduct({ ...newProduct, customFields: newProduct.customFields.filter(f => f.id !== id) })}
+          onUpdateCustomField={(id, field, val) => setNewProduct({ ...newProduct, customFields: newProduct.customFields.map(f => f.id === id ? { ...f, [field]: val } : f) })}
+          onAddStage={(name) => { 
+            const stageName = typeof name === 'string' ? name : stageInput;
+            if (stageName.trim()) { 
+              setNewProductStages([...newProductStages, stageName.trim()]); 
+              if (typeof name !== 'string') setStageInput(""); 
+            } 
+          }}
+          onRemoveStage={(idx) => setNewProductStages(newProductStages.filter((_, i) => i !== idx))}
+          onMoveStage={(idx, dir) => {
+            const ns = [...newProductStages];
+            if (dir === 'up' && idx > 0) [ns[idx], ns[idx-1]] = [ns[idx-1], ns[idx]];
+            if (dir === 'down' && idx < ns.length-1) [ns[idx], ns[idx+1]] = [ns[idx+1], ns[idx]];
+            setNewProductStages(ns);
+          }}
+          onSave={handleCreateProduct}
+          onClose={() => setIsCreateModalOpen(false)}
+          templates={templates}
+          onDeleteTemplate={async (id) => {
+            await deleteStageTemplate(id);
+            const updated = await getStageTemplates();
+            setTemplates(updated);
+          }}
+        />
+      )}
+
+      {isNodeModalOpen && (
+        <NodeInfoModal 
+          tempStatus={tempStatus}
+          setTempStatus={setTempStatus}
+          tempFields={tempFields}
+          tempAttachments={tempAttachments}
+          setTempAttachments={setTempAttachments}
+          fieldInput={fieldInput}
+          setFieldInput={setFieldInput}
+          onAddTempField={() => {
+            if (fieldInput.label.trim()) {
+              setTempFields([...tempFields, { id: `f-${Date.now()}`, label: fieldInput.label.trim(), value: fieldInput.value.trim() }]);
+              setFieldInput({ label: "", value: "" });
+            }
+          }}
+          onRemoveTempField={(id) => setTempFields(tempFields.filter(f => f.id !== id))}
+          onSave={handleSaveNodeInfo}
+          onClose={() => setIsNodeModalOpen(false)}
+        />
+      )}
+
+      {isLogModalOpen && (
+        <LogModal 
+          currentSample={currentSample}
+          onClose={() => setIsLogModalOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
