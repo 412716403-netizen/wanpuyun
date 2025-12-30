@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, CheckCircle2, Clock, RefreshCw, History, Plus, Layers, FileText, X, Download, FileArchive } from "lucide-react";
+import { Edit3, CheckCircle2, Clock, RefreshCw, History, Plus, Layers, FileText, X, Download, FileArchive, ImageIcon } from "lucide-react";
 import { Product, SampleVersion } from "@/types";
 
 interface MainContentProps {
@@ -32,8 +32,15 @@ export const MainContent = ({
   <main className="flex-1 flex flex-col bg-white overflow-y-auto no-scrollbar">
     {/* Header Section */}
     <div className="p-10 flex gap-10 border-b border-slate-100">
-      <div className="w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0">
-        <img src={selectedProduct.image} className="w-full h-full object-cover" />
+      <div className="w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0 flex items-center justify-center">
+        {selectedProduct.image ? (
+          <img src={selectedProduct.image} className="w-full h-full object-cover" />
+        ) : (
+          <div className="flex flex-col items-center text-slate-300">
+            <ImageIcon className="w-16 h-16 mb-2 opacity-20" />
+            <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">No Image</span>
+          </div>
+        )}
         <div className="absolute top-4 right-4 flex gap-2">
           <button onClick={() => onEditProduct(selectedProduct)} className="p-2 bg-white/90 backdrop-blur rounded-lg shadow-sm text-slate-600 hover:text-indigo-600"><Edit3 className="w-4 h-4" /></button>
         </div>
