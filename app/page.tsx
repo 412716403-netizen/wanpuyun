@@ -130,12 +130,22 @@ export default function Dashboard() {
   };
 
   const handleCreateProduct = async () => {
+    // 自动合并未点加号的自定义字段
+    let finalCustomFields = [...newProduct.customFields];
+    if (newProductFieldInput.label.trim()) {
+      finalCustomFields.push({
+        id: `cf-auto-${Date.now()}`,
+        label: newProductFieldInput.label.trim(),
+        value: newProductFieldInput.value.trim()
+      });
+    }
+
     if (isEditMode && selectedProductId) {
       await updateProduct(selectedProductId, {
         code: newProduct.code,
         name: newProduct.name,
         image: newProduct.image,
-        customFields: newProduct.customFields.map(f => ({ label: f.label, value: f.value }))
+        customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value }))
       });
       await refreshData();
     } else {
@@ -143,7 +153,7 @@ export default function Dashboard() {
         code: newProduct.code,
         name: newProduct.name,
         image: newProduct.image,
-        customFields: newProduct.customFields.map(f => ({ label: f.label, value: f.value })),
+        customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value })),
         stages: newProductStages
       });
       await refreshData();
@@ -152,6 +162,7 @@ export default function Dashboard() {
     setIsCreateModalOpen(false);
     setIsEditMode(false);
     setNewProduct({ code: "", name: "", image: "", customFields: [] });
+    setNewProductFieldInput({ label: "", value: "" }); // 重置输入框
     setNewProductStages([]);
   };
 
@@ -165,17 +176,28 @@ export default function Dashboard() {
     if (!editingStage || !selectedProduct) return;
     const { sampleId, stageId } = editingStage;
     
+    // 自动合并未点加号的工艺参数
+    let finalFields = [...tempFields];
+    if (fieldInput.label.trim()) {
+      finalFields.push({
+        id: `f-auto-${Date.now()}`,
+        label: fieldInput.label.trim(),
+        value: fieldInput.value.trim()
+      });
+    }
+
     await updateStageInfo({
       stageId,
       sampleId,
       status: tempStatus,
-      fields: tempFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
+      fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
       attachments: tempAttachments.map(a => ({ fileName: a.fileName, fileUrl: a.fileUrl })),
       userName: "Jun Zheng", // 实际应从 Auth 获取
       logDetail: `更新状态为: ${tempStatus}`
     });
 
     await refreshData();
+    setFieldInput({ label: "", value: "" }); // 重置输入框
     setIsNodeModalOpen(false);
   };
 
@@ -223,6 +245,25 @@ export default function Dashboard() {
     }
   };
 
+  const handleCreateOpen = () => {
+    setIsEditMode(false);
+    
+    // 获取最近一个产品的自定义字段标签
+    const lastProduct = products[0]; // products 按 createdAt 倒序排列
+    const initialCustomFields = lastProduct 
+      ? lastProduct.customFields.map(cf => ({ id: `cf-${Date.now()}-${Math.random()}`, label: cf.label, value: "" }))
+      : [];
+
+    setNewProduct({ 
+      code: "", 
+      name: "", 
+      image: "", 
+      customFields: initialCustomFields 
+    });
+    setNewProductStages([]);
+    setIsCreateModalOpen(true);
+  };
+
   if (loading) return <div className="flex h-screen items-center justify-center bg-[#F3F4F6] text-slate-500">加载中...</div>;
 
   return (
@@ -238,7 +279,7 @@ export default function Dashboard() {
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         onSelectProduct={handleSelectProduct}
-        onCreateOpen={() => { setIsEditMode(false); setIsCreateModalOpen(true); }}
+        onCreateOpen={handleCreateOpen}
         isFilterOpen={isFilterOpen}
         setIsFilterOpen={setIsFilterOpen}
         filters={filters}
@@ -271,7 +312,29 @@ export default function Dashboard() {
           onNodeRegister={(stage) => {
             if (!selectedProduct) return;
             setEditingStage({ productId: selectedProduct.id, sampleId: activeSampleId, stageId: stage.id });
-            setTempFields(stage.fields.map((f: any) => ({ id: f.id, label: f.label, value: String(f.value) })));
+            
+            // 如果当前节点没有参数，尝试从其他产品的相同名称节点中获取默认参数名
+            let initialFields = stage.fields.map((f: any) => ({ id: f.id, label: f.label, value: String(f.value) }));
+            
+            if (initialFields.length === 0) {
+              // 遍历所有产品，寻找相同名称且有参数的节点
+              for (const p of products) {
+                const sameStageWithFields = p.samples
+                  .flatMap(s => s.stages)
+                  .find(st => st.name === stage.name && st.fields.length > 0);
+                
+                if (sameStageWithFields) {
+                  initialFields = sameStageWithFields.fields.map(f => ({
+                    id: `f-${Date.now()}-${Math.random()}`,
+                    label: f.label,
+                    value: ""
+                  }));
+                  break; // 找到最近的一个就停止
+                }
+              }
+            }
+
+            setTempFields(initialFields);
             setTempAttachments(stage.attachments || []);
             setTempStatus(stage.status);
             setIsNodeModalOpen(true);
@@ -350,6 +413,7 @@ export default function Dashboard() {
           }}
           onRemoveTempField={(id) => setTempFields(tempFields.filter(f => f.id !== id))}
           onSave={handleSaveNodeInfo}
+          onUpdateTempField={(id, val) => setTempFields(tempFields.map(f => f.id === id ? { ...f, value: val } : f))}
           onClose={() => setIsNodeModalOpen(false)}
         />
       )}

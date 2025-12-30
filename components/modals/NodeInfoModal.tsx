@@ -12,6 +12,7 @@ interface NodeInfoModalProps {
   setFieldInput: (f: any) => void;
   onAddTempField: () => void;
   onRemoveTempField: (id: string) => void;
+  onUpdateTempField: (id: string, value: string) => void;
   onSave: () => void;
   onClose: () => void;
 }
@@ -26,6 +27,7 @@ export const NodeInfoModal = ({
   setFieldInput,
   onAddTempField,
   onRemoveTempField,
+  onUpdateTempField,
   onSave,
   onClose
 }: NodeInfoModalProps) => {
@@ -88,12 +90,24 @@ export const NodeInfoModal = ({
 
             <div>
               <label className="text-xs font-bold text-slate-900 mb-4 block">核心工艺 / 参数登记</label>
-              <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-2 gap-4 mb-6">
                 {tempFields.map(field => (
-                  <div key={field.id} className="bg-slate-50 p-1 rounded-2xl flex items-center gap-2 border border-slate-100 group/item relative">
-                    <span className="text-[10px] font-bold text-slate-400 pl-4 w-12 truncate">{field.label}</span>
-                    <div className="flex-1 bg-white px-4 py-2.5 rounded-xl text-sm shadow-sm truncate pr-8">{field.value}</div>
-                    <button onClick={() => onRemoveTempField(field.id)} className="absolute right-2 p-1 opacity-0 group-hover/item:opacity-100 text-red-300 hover:text-red-500 bg-white rounded-lg shadow-sm transition-all"><X className="w-4 h-4" /></button>
+                  <div key={field.id} className="bg-white rounded-[20px] flex items-center border border-slate-100 group/field relative shadow-sm h-14 hover:border-indigo-200 transition-all overflow-hidden">
+                    <div className="bg-slate-50/50 h-full flex items-center px-4 border-r border-slate-100 min-w-[85px]">
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight truncate w-full">{field.label}</span>
+                    </div>
+                    <input 
+                      className="flex-1 px-5 text-sm font-bold text-slate-800 outline-none bg-transparent h-full w-full" 
+                      value={field.value} 
+                      onChange={(e) => onUpdateTempField(field.id, e.target.value)}
+                      placeholder="未填写"
+                    />
+                    <button 
+                      onClick={() => onRemoveTempField(field.id)} 
+                      className="absolute right-2 opacity-0 group-hover/field:opacity-100 p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>

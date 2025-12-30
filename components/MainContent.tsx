@@ -190,7 +190,7 @@ export const MainContent = ({
                 </div>
               </div>
               <div className="flex flex-wrap gap-4 mb-6">
-                {stage.fields.map(field => (
+                {stage.fields.filter(field => field.value && String(field.value).trim() !== "").map(field => (
                   <div key={field.id} className="bg-slate-50 px-4 py-3 rounded-xl border border-slate-100 min-w-[140px]">
                     <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">{field.label}</div>
                     <div className="text-sm font-bold text-slate-900">{field.value}</div>
