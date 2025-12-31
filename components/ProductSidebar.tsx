@@ -73,81 +73,44 @@ export const ProductSidebar = ({
             className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500"
           />
         </div>
-        <div className="relative">
-          <button 
-            onClick={() => setIsFilterOpen(!isFilterOpen)}
-            className={`p-2.5 rounded-xl border transition-all ${isFilterOpen || filters.syncStatus !== 'all' || filters.stageName !== 'all' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-100 text-slate-400 hover:text-indigo-50'}`}
-          >
-            <Filter className="w-4 h-4" />
-          </button>
+        <button 
+          onClick={() => setIsFilterOpen(!isFilterOpen)}
+          className={`p-2.5 rounded-xl border transition-all ${isFilterOpen || filters.syncStatus !== 'all' || filters.stageName !== 'all' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-100 text-slate-400 hover:text-indigo-50'}`}
+        >
+          <Filter className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
 
-          {isFilterOpen && (
-            <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 p-4">
-              <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
-                <span className="text-xs font-bold text-slate-900">高级筛选</span>
-                <button onClick={() => setFilters({ syncStatus: 'all', stageName: 'all' })} className="text-[10px] text-indigo-600 font-bold">重置全部</button>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">同步状态</label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {['all', 'synced', 'unsynced'].map(s => (
-                      <button key={s} onClick={() => setFilters({...filters, syncStatus: s})} className={`py-1.5 rounded-lg text-[10px] font-bold border ${filters.syncStatus === s ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>
-                        {s === 'all' ? '全部' : s === 'synced' ? '已同步' : '未同步'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">正在进行的流程</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button onClick={() => setFilters({...filters, stageName: 'all'})} className={`py-1 px-2 rounded-lg text-[10px] font-bold border ${filters.stageName === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-50'}`}>全部</button>
-                    {uniqueStageNames.map(name => (
-                      <button key={name} onClick={() => setFilters({...filters, stageName: name})} className={`py-1 px-2 rounded-lg text-[10px] font-bold border ${filters.stageName === name ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-500 border-slate-100'}`}>{name}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+    {isFilterOpen && (
+      <div className="mx-6 mb-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 animate-in slide-in-from-top-2 duration-200">
+        <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200/50">
+          <span className="text-[10px] font-black text-slate-900 uppercase tracking-widest">高级筛选方案</span>
+          <button onClick={() => setFilters({ syncStatus: 'all', stageName: 'all' })} className="text-[10px] text-indigo-600 font-bold hover:underline">重置</button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">同步状态</label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {['all', 'synced', 'unsynced'].map(s => (
+                <button key={s} onClick={() => setFilters({...filters, syncStatus: s})} className={`py-1.5 rounded-lg text-[9px] font-bold border transition-all ${filters.syncStatus === s ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-500 border-slate-100 hover:border-indigo-200'}`}>
+                  {s === 'all' ? '全部' : s === 'synced' ? '已同步' : '未同步'}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
+          <div>
+            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 block">当前进度节点</label>
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => setFilters({...filters, stageName: 'all'})} className={`py-1 px-2 rounded-lg text-[9px] font-bold border transition-all ${filters.stageName === 'all' ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-500 border-slate-100 hover:border-indigo-200'}`}>全部节点</button>
+              {uniqueStageNames.map(name => (
+                <button key={name} onClick={() => setFilters({...filters, stageName: name})} className={`py-1 px-2 rounded-lg text-[9px] font-bold border transition-all ${filters.stageName === name ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-500 border-slate-100 hover:border-indigo-200'}`}>{name}</button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
-
-      {/* 已选筛选标签显示区 */}
-      {(filters.syncStatus !== 'all' || filters.stageName !== 'all' || searchQuery) && (
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {searchQuery && (
-            <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-bold border border-slate-200">
-              搜索: {searchQuery}
-              <button onClick={() => setSearchQuery("")}><X className="w-2.5 h-2.5" /></button>
-            </div>
-          )}
-          {filters.syncStatus !== 'all' && (
-            <div className="flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold border border-indigo-100">
-              状态: {filters.syncStatus === 'synced' ? '已同步' : '未同步'}
-              <button onClick={() => setFilters({...filters, syncStatus: 'all'})}><X className="w-2.5 h-2.5" /></button>
-            </div>
-          )}
-          {filters.stageName !== 'all' && (
-            <div className="flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold border border-indigo-100">
-              节点: {filters.stageName}
-              <button onClick={() => setFilters({...filters, stageName: 'all'})}><X className="w-2.5 h-2.5" /></button>
-            </div>
-          )}
-          {(filters.syncStatus !== 'all' || filters.stageName !== 'all' || searchQuery) && (
-            <button 
-              onClick={() => {
-                setFilters({ syncStatus: 'all', stageName: 'all' });
-                setSearchQuery("");
-              }}
-              className="text-[10px] text-slate-400 font-bold hover:text-indigo-600 ml-1"
-            >
-              清除全部
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+    )}
 
     <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-3 no-scrollbar">
       {filteredProducts.map(product => {

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { GlobalNav } from "@/components/GlobalNav";
 import { ProductSidebar } from "@/components/ProductSidebar";
 import { MainContent } from "@/components/MainContent";
 import { CreateProductModal } from "@/components/modals/CreateProductModal";
@@ -36,6 +35,7 @@ export default function Dashboard() {
   const [activeSampleId, setActiveSampleId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"developing" | "archived">("developing");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false); // 新增提交锁定状态
 
   // 初始化加载数据
   useEffect(() => {
@@ -130,40 +130,51 @@ export default function Dashboard() {
   };
 
   const handleCreateProduct = async () => {
-    // 自动合并未点加号的自定义字段
-    let finalCustomFields = [...newProduct.customFields];
-    if (newProductFieldInput.label.trim()) {
-      finalCustomFields.push({
-        id: `cf-auto-${Date.now()}`,
-        label: newProductFieldInput.label.trim(),
-        value: newProductFieldInput.value.trim()
-      });
-    }
+    if (isSubmitting) return; // 如果正在提交中，直接拦截
+    setIsSubmitting(true);
+    
+    try {
+      // 自动合并未点加号的自定义字段
+      // ... 逻辑保持不变 ...
+      let finalCustomFields = [...newProduct.customFields];
+      if (newProductFieldInput.label.trim()) {
+        finalCustomFields.push({
+          id: `cf-auto-${Date.now()}`,
+          label: newProductFieldInput.label.trim(),
+          value: newProductFieldInput.value.trim()
+        });
+      }
 
-    if (isEditMode && selectedProductId) {
-      await updateProduct(selectedProductId, {
-        code: newProduct.code,
-        name: newProduct.name,
-        image: newProduct.image,
-        customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value }))
-      });
-      await refreshData();
-    } else {
-      const newId = await createProduct({
-        code: newProduct.code,
-        name: newProduct.name,
-        image: newProduct.image,
-        customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value })),
-        stages: newProductStages
-      });
-      await refreshData();
-      handleSelectProduct(newId);
+      if (isEditMode && selectedProductId) {
+        await updateProduct(selectedProductId, {
+          code: newProduct.code,
+          name: newProduct.name,
+          image: newProduct.image,
+          customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value }))
+        });
+        await refreshData();
+      } else {
+        const newId = await createProduct({
+          code: newProduct.code,
+          name: newProduct.name,
+          image: newProduct.image,
+          customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value })),
+          stages: newProductStages
+        });
+        await refreshData();
+        handleSelectProduct(newId);
+      }
+      setIsCreateModalOpen(false);
+      setIsEditMode(false);
+      setNewProduct({ code: "", name: "", image: "", customFields: [] });
+      setNewProductFieldInput({ label: "", value: "" }); 
+      setNewProductStages([]);
+    } catch (error) {
+      console.error("Save failed:", error);
+      alert("保存失败，原因可能是：\n1. 图片文件太大，超出了服务器限制\n2. 网络连接超时\n\n请尝试换一张较小的图片测试，或检查 Zeabur 日志。");
+    } finally {
+      setIsSubmitting(false); // 无论成功失败，最后都解除锁定
     }
-    setIsCreateModalOpen(false);
-    setIsEditMode(false);
-    setNewProduct({ code: "", name: "", image: "", customFields: [] });
-    setNewProductFieldInput({ label: "", value: "" }); // 重置输入框
-    setNewProductStages([]);
   };
 
   const handleEditProduct = (p: Product) => {
@@ -176,6 +187,9 @@ export default function Dashboard() {
     if (!editingStage || !selectedProduct) return;
     const { sampleId, stageId } = editingStage;
     
+    // 获取原始节点信息以便对比
+    const stage = currentSample?.stages.find(st => st.id === stageId);
+    
     // 自动合并未点加号的工艺参数
     let finalFields = [...tempFields];
     if (fieldInput.label.trim()) {
@@ -186,6 +200,33 @@ export default function Dashboard() {
       });
     }
 
+    // 构建详细日志
+    const statusMap: Record<StageStatus, string> = {
+      pending: "待开始",
+      in_progress: "进行中",
+      completed: "已完成",
+      error: "异常/退回"
+    };
+
+    let logDetail = `节点: ${stage?.name || '未知'}\n`;
+    if (stage?.status !== tempStatus) {
+      logDetail += `[状态变更] ${statusMap[stage?.status as StageStatus || 'pending']} -> ${statusMap[tempStatus]}\n`;
+    }
+
+    const addedFields = finalFields.filter(tf => !stage?.fields.some(f => f.id === tf.id && f.value === tf.value));
+    if (addedFields.length > 0) {
+      logDetail += `[参数更新] 更新了 ${addedFields.length} 项工艺参数: ${addedFields.map(f => f.label).join(', ')}\n`;
+    }
+
+    const addedAtts = tempAttachments.filter(ta => !stage?.attachments?.some(a => a.id === ta.id));
+    if (addedAtts.length > 0) {
+      logDetail += `[附件上传] 新增了 ${addedAtts.length} 个附件: ${addedAtts.map(a => a.fileName).join(', ')}`;
+    }
+
+    if (logDetail === `节点: ${stage?.name || '未知'}\n`) {
+      logDetail += "未做任何修改，仅保存。";
+    }
+
     await updateStageInfo({
       stageId,
       sampleId,
@@ -193,7 +234,7 @@ export default function Dashboard() {
       fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
       attachments: tempAttachments.map(a => ({ fileName: a.fileName, fileUrl: a.fileUrl })),
       userName: "Jun Zheng", // 实际应从 Auth 获取
-      logDetail: `更新状态为: ${tempStatus}`
+      logDetail: logDetail.trim()
     });
 
     await refreshData();
@@ -268,7 +309,6 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen bg-[#F3F4F6] overflow-hidden">
-      <GlobalNav />
       
       <ProductSidebar 
         products={products}
@@ -387,6 +427,7 @@ export default function Dashboard() {
           }}
           onSave={handleCreateProduct}
           onClose={() => setIsCreateModalOpen(false)}
+          isSubmitting={isSubmitting}
           templates={templates}
           onDeleteTemplate={async (id) => {
             await deleteStageTemplate(id);

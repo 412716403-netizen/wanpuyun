@@ -19,6 +19,7 @@ interface CreateProductModalProps {
   onMoveStage: (idx: number, dir: 'up' | 'down') => void;
   onSave: () => void;
   onClose: () => void;
+  isSubmitting?: boolean;
   templates: { id: string, name: string }[];
   onDeleteTemplate: (id: string) => void;
 }
@@ -40,6 +41,7 @@ export const CreateProductModal = ({
   onMoveStage,
   onSave,
   onClose,
+  isSubmitting,
   templates,
   onDeleteTemplate
 }: CreateProductModalProps) => {
@@ -187,7 +189,12 @@ export const CreateProductModal = ({
 
           <div className="mt-16 pt-8 border-t border-slate-100 flex items-center justify-between">
             <button onClick={onClose} className="text-[11px] font-bold text-slate-400 hover:text-slate-600">放弃更改</button>
-            <button onClick={onSave} className="bg-indigo-600 text-white px-12 py-5 rounded-[28px] font-bold text-sm shadow-2xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-[0.95]">
+            <button 
+              onClick={onSave} 
+              disabled={isSubmitting}
+              className={`bg-indigo-600 text-white px-12 py-5 rounded-[28px] font-bold text-sm shadow-2xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-[0.95] flex items-center gap-3 ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {isSubmitting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
               {isEditMode ? "保存修改" : "保存款式信息并应用流程"}
             </button>
           </div>

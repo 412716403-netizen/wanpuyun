@@ -31,7 +31,7 @@ export const LogModal = ({ currentSample, onClose }: LogModalProps) => (
                     <span className="text-xs font-black text-slate-900 uppercase tracking-wider">{log.action}</span>
                     <span className="text-[10px] text-slate-400 font-bold">{log.time}</span>
                   </div>
-                  <p className="text-sm text-slate-600 font-medium mb-3">{log.detail}</p>
+                  <p className="text-sm text-slate-600 font-medium mb-3 whitespace-pre-wrap leading-relaxed">{log.detail}</p>
                   <div className="flex items-center gap-2">
                     <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[8px] font-bold text-slate-500">JD</div>
                     <span className="text-[10px] text-slate-400 font-bold">操作人: {log.user}</span>
