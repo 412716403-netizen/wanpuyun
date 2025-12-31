@@ -184,105 +184,136 @@ export default function Dashboard() {
   };
 
   const handleSaveNodeInfo = async () => {
-    if (!editingStage || !selectedProduct) return;
-    const { sampleId, stageId } = editingStage;
+    if (!editingStage || !selectedProduct || isSubmitting) return;
+    setIsSubmitting(true);
     
-    // 获取原始节点信息以便对比
-    const stage = currentSample?.stages.find(st => st.id === stageId);
-    
-    // 自动合并未点加号的工艺参数
-    let finalFields = [...tempFields];
-    if (fieldInput.label.trim()) {
-      finalFields.push({
-        id: `f-auto-${Date.now()}`,
-        label: fieldInput.label.trim(),
-        value: fieldInput.value.trim()
+    try {
+      const { sampleId, stageId } = editingStage;
+      
+      // 获取原始节点信息以便对比
+      const stage = currentSample?.stages.find(st => st.id === stageId);
+      
+      // 自动合并未点加号的工艺参数
+      let finalFields = [...tempFields];
+      if (fieldInput.label.trim()) {
+        finalFields.push({
+          id: `f-auto-${Date.now()}`,
+          label: fieldInput.label.trim(),
+          value: fieldInput.value.trim()
+        });
+      }
+
+      // 构建详细日志
+      const statusMap: Record<StageStatus, string> = {
+        pending: "待开始",
+        in_progress: "进行中",
+        completed: "已完成",
+        error: "异常/退回"
+      };
+
+      let logDetail = `节点: ${stage?.name || '未知'}\n`;
+      if (stage?.status !== tempStatus) {
+        logDetail += `[状态变更] ${statusMap[stage?.status as StageStatus || 'pending']} -> ${statusMap[tempStatus]}\n`;
+      }
+
+      const addedFields = finalFields.filter(tf => !stage?.fields.some(f => f.id === tf.id && f.value === tf.value));
+      if (addedFields.length > 0) {
+        logDetail += `[参数更新] 更新了 ${addedFields.length} 项工艺参数: ${addedFields.map(f => f.label).join(', ')}\n`;
+      }
+
+      const addedAtts = tempAttachments.filter(ta => !stage?.attachments?.some(a => a.id === ta.id));
+      if (addedAtts.length > 0) {
+        logDetail += `[附件上传] 新增了 ${addedAtts.length} 个附件: ${addedAtts.map(a => a.fileName).join(', ')}`;
+      }
+
+      if (logDetail === `节点: ${stage?.name || '未知'}\n`) {
+        logDetail += "未做任何修改，仅保存。";
+      }
+
+      await updateStageInfo({
+        stageId,
+        sampleId,
+        status: tempStatus,
+        fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
+        attachments: tempAttachments.map(a => ({ fileName: a.fileName, fileUrl: a.fileUrl })),
+        userName: "Jun Zheng", // 实际应从 Auth 获取
+        logDetail: logDetail.trim()
       });
+
+      await refreshData();
+      setFieldInput({ label: "", value: "" }); // 重置输入框
+      setIsNodeModalOpen(false);
+    } catch (error) {
+      console.error("Save node info failed:", error);
+      alert("保存失败，请重试。");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // 构建详细日志
-    const statusMap: Record<StageStatus, string> = {
-      pending: "待开始",
-      in_progress: "进行中",
-      completed: "已完成",
-      error: "异常/退回"
-    };
-
-    let logDetail = `节点: ${stage?.name || '未知'}\n`;
-    if (stage?.status !== tempStatus) {
-      logDetail += `[状态变更] ${statusMap[stage?.status as StageStatus || 'pending']} -> ${statusMap[tempStatus]}\n`;
-    }
-
-    const addedFields = finalFields.filter(tf => !stage?.fields.some(f => f.id === tf.id && f.value === tf.value));
-    if (addedFields.length > 0) {
-      logDetail += `[参数更新] 更新了 ${addedFields.length} 项工艺参数: ${addedFields.map(f => f.label).join(', ')}\n`;
-    }
-
-    const addedAtts = tempAttachments.filter(ta => !stage?.attachments?.some(a => a.id === ta.id));
-    if (addedAtts.length > 0) {
-      logDetail += `[附件上传] 新增了 ${addedAtts.length} 个附件: ${addedAtts.map(a => a.fileName).join(', ')}`;
-    }
-
-    if (logDetail === `节点: ${stage?.name || '未知'}\n`) {
-      logDetail += "未做任何修改，仅保存。";
-    }
-
-    await updateStageInfo({
-      stageId,
-      sampleId,
-      status: tempStatus,
-      fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
-      attachments: tempAttachments.map(a => ({ fileName: a.fileName, fileUrl: a.fileUrl })),
-      userName: "Jun Zheng", // 实际应从 Auth 获取
-      logDetail: logDetail.trim()
-    });
-
-    await refreshData();
-    setFieldInput({ label: "", value: "" }); // 重置输入框
-    setIsNodeModalOpen(false);
   };
 
   const handleAddSample = async () => {
-    if (!selectedProduct) return;
+    if (!selectedProduct || isSubmitting) return;
+    setIsSubmitting(true);
     
-    // 自动计算新轮次名称，如“二样”、“三样”
-    const sampleNames = ["头样", "二样", "三样", "四样", "五样", "大货样"];
-    const currentCount = selectedProduct.samples.length;
-    const nextName = sampleNames[currentCount] || `${currentCount + 1}样`;
+    try {
+      // 自动计算新轮次名称，如“二样”、“三样”
+      const sampleNames = ["头样", "二样", "三样", "四样", "五样", "大货样"];
+      const currentCount = selectedProduct.samples.length;
+      const nextName = sampleNames[currentCount] || `${currentCount + 1}样`;
 
-    const newSampleId = await createSampleVersion(selectedProduct.id, nextName);
-    await refreshData();
-    setActiveSampleId(newSampleId);
+      const newSampleId = await createSampleVersion(selectedProduct.id, nextName);
+      await refreshData();
+      setActiveSampleId(newSampleId);
+    } catch (error) {
+      console.error("Add sample failed:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteSample = async (sampleId: string) => {
-    if (!selectedProduct) return;
+    if (!selectedProduct || isSubmitting) return;
+    setIsSubmitting(true);
     
-    await deleteSampleVersion(sampleId);
-    
-    // 重新获取数据
-    const data = await getProducts();
-    setProducts(data);
-    
-    // 重新计算选中状态：如果删掉的是当前激活的，切换到第一个
-    const currentProduct = data.find((p: Product) => p.id === selectedProductId);
-    if (currentProduct && currentProduct.samples.length > 0) {
-      if (activeSampleId === sampleId) {
-        setActiveSampleId(currentProduct.samples[0].id);
+    try {
+      await deleteSampleVersion(sampleId);
+      
+      // 重新获取数据
+      const data = await getProducts();
+      setProducts(data);
+      
+      // 重新计算选中状态：如果删掉的是当前激活的，切换到第一个
+      const currentProduct = data.find((p: Product) => p.id === selectedProductId);
+      if (currentProduct && currentProduct.samples.length > 0) {
+        if (activeSampleId === sampleId) {
+          setActiveSampleId(currentProduct.samples[0].id);
+        }
       }
+    } catch (error) {
+      console.error("Delete sample failed:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleDeleteProduct = async (id: string) => {
-    await deleteProduct(id);
-    const data = await getProducts();
-    setProducts(data);
-    if (data.length > 0) {
-      setSelectedProductId(data[0].id);
-      setActiveSampleId(data[0].samples[0].id);
-    } else {
-      setSelectedProductId("");
-      setActiveSampleId("");
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await deleteProduct(id);
+      const data = await getProducts();
+      setProducts(data);
+      if (data.length > 0) {
+        setSelectedProductId(data[0].id);
+        setActiveSampleId(data[0].samples[0].id);
+      } else {
+        setSelectedProductId("");
+        setActiveSampleId("");
+      }
+    } catch (error) {
+      console.error("Delete product failed:", error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -336,17 +367,29 @@ export default function Dashboard() {
           onEditProduct={handleEditProduct}
           onDeleteProduct={handleDeleteProduct}
           onToggleArchive={async (id) => {
-            const p = products.find((product: Product) => product.id === id);
-            if (p) {
-              await toggleProductStatus(id, p.status);
-              await refreshData();
+            if (isSubmitting) return;
+            setIsSubmitting(true);
+            try {
+              const p = products.find((product: Product) => product.id === id);
+              if (p) {
+                await toggleProductStatus(id, p.status);
+                await refreshData();
+              }
+            } finally {
+              setIsSubmitting(false);
             }
           }}
           onToggleSync={async (id) => {
-            const p = products.find((product: Product) => product.id === id);
-            if (p) {
-              await toggleSyncStatus(id, p.isSynced);
-              await refreshData();
+            if (isSubmitting) return;
+            setIsSubmitting(true);
+            try {
+              const p = products.find((product: Product) => product.id === id);
+              if (p) {
+                await toggleSyncStatus(id, p.isSynced);
+                await refreshData();
+              }
+            } finally {
+              setIsSubmitting(false);
             }
           }}
           onNodeRegister={(stage) => {
