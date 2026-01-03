@@ -27,9 +27,14 @@ async function main() {
 
   for (const t of templates) {
     await prisma.stageTemplate.upsert({
-      where: { name: t.name },
+      where: { 
+        tenantId_name: { 
+          tenantId: 'default', 
+          name: t.name 
+        } 
+      },
       update: { order: t.order },
-      create: { name: t.name, order: t.order },
+      create: { tenantId: 'default', name: t.name, order: t.order },
     })
   }
 
