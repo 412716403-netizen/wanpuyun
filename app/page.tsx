@@ -20,6 +20,7 @@ import {
   deleteSampleVersion,
   deleteProduct,
   getGoodsInitData,
+  syncProductToExternal,
   addDictItem,
   getConnectedInfo,
   externalLogin,
@@ -179,9 +180,7 @@ export default function Dashboard() {
   const handleConnect = async (company: string, user: string, pass: string) => {
     const result = await externalLogin(company, user, pass);
     if (result.success) {
-      const info = await getConnectedInfo();
-      setConnectedInfo(info);
-      refreshDicts();
+      window.location.reload();
     }
     return result;
   };
@@ -435,6 +434,21 @@ export default function Dashboard() {
           setActiveSampleId={setActiveSampleId}
           onEditProduct={handleEditProduct}
           onDeleteProduct={handleDeleteProduct}
+          onSync={async (id) => {
+            if (isSubmitting) return;
+            setIsSubmitting(true);
+            try {
+              const res = await syncProductToExternal(id);
+              if (res.success) {
+                alert("🎉 同步成功！商品已在生产管理系统中创建。");
+                await refreshData();
+              } else {
+                alert(`❌ 同步失败：${res.message}`);
+              }
+            } finally {
+              setIsSubmitting(false);
+            }
+          }}
           onToggleArchive={async (id) => {
             if (isSubmitting) return;
             setIsSubmitting(true);

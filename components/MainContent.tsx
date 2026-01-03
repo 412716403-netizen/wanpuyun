@@ -10,7 +10,7 @@ interface MainContentProps {
   onEditProduct: (p: Product) => void;
   onDeleteProduct: (id: string) => void;
   onToggleArchive: (id: string) => void;
-  onToggleSync: (id: string) => void;
+  onSync: (id: string) => Promise<void>;
   onNodeRegister: (stage: any) => void;
   onLogOpen: () => void;
   onAddSample: () => void;
@@ -21,13 +21,13 @@ export const MainContent = ({
   selectedProduct,
   currentSample,
   activeSampleId,
-  setActiveSampleId,
-  onEditProduct,
-  onDeleteProduct,
-  onToggleArchive,
-  onToggleSync,
-  onNodeRegister,
-  onLogOpen,
+    setActiveSampleId,
+    onEditProduct,
+    onDeleteProduct,
+    onToggleArchive,
+    onSync,
+    onNodeRegister,
+    onLogOpen,
   onAddSample,
   onDeleteSample
 }: MainContentProps) => {
@@ -63,11 +63,11 @@ export const MainContent = ({
           <div className="flex items-center gap-4 mb-2">
             <h2 className="text-4xl font-black text-slate-900 tracking-tighter truncate">{selectedProduct.code}</h2>
             {selectedProduct.isSynced ? (
-              <button onClick={() => onToggleSync(selectedProduct.id)} className="bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full text-[10px] font-bold border border-emerald-100 flex items-center gap-2 hover:bg-emerald-100 transition-all group">
+              <div className="bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full text-[10px] font-bold border border-emerald-100 flex items-center gap-2 group">
                 <CheckCircle2 className="w-3.5 h-3.5" /> <span>商品信息已同步</span>
-              </button>
+              </div>
             ) : (
-              <button onClick={() => onToggleSync(selectedProduct.id)} className="bg-indigo-600 text-white px-4 py-1.5 rounded-full text-[10px] font-bold shadow-lg shadow-indigo-100 flex items-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all">
+              <button onClick={() => onSync(selectedProduct.id)} className="bg-indigo-600 text-white px-4 py-1.5 rounded-full text-[10px] font-bold shadow-lg shadow-indigo-100 flex items-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all">
                 <RefreshCw className="w-3.5 h-3.5" /> 生成大货商品信息
               </button>
             )}

@@ -118,8 +118,8 @@ export async function getGoodsInitData() {
 
     const [cData, sData, mData] = await Promise.all([cRes.json(), sRes.json(), mRes.json()]);
 
-    const colors = (cData.data || []).map((item: any) => ({ id: `c-${item.dict_id}`, name: item.name }));
-    const sizes = (sData.data || []).map((item: any) => ({ id: `s-${item.dict_id}`, name: item.name }));
+    const colors = (cData.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
+    const sizes = (sData.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
     const materials = (mData.data || []).map((item: any) => ({
       id: String(item.material_id),
       name: item.name,
@@ -133,6 +133,137 @@ export async function getGoodsInitData() {
   } catch (error) { 
     console.error("[InitData] 严重异常:", error);
     return null; 
+  }
+}
+
+export async function syncProductToExternal(productId: string) {
+  if (!EXTERNAL_API_BASE_URL) return { success: false, message: "请配置域名" };
+  
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+    if (!sessionCookie) return { success: false, message: "请先连接生产系统" };
+
+    // 1. 获取本地商品完整数据和外部物料字典
+    const [product, initData] = await Promise.all([
+      prisma.product.findUnique({
+        where: { id: productId },
+        include: { yarnUsages: true, customFields: true }
+      }),
+      getGoodsInitData()
+    ]);
+
+    if (!product || !initData) return { success: false, message: "数据加载失败" };
+
+    const colors = JSON.parse(product.colorsJson || "[]");
+    const sizes = JSON.parse(product.sizesJson || "[]");
+
+    // 2. 处理图片同步 (如果有图片)
+    let remoteImagePath = "";
+    if (product.image && product.image.startsWith('data:image')) {
+      try {
+        const base64Data = product.image.split(',')[1];
+        const contentType = product.image.split(',')[0].split(':')[1].split(';')[0];
+        const buffer = Buffer.from(base64Data, 'base64');
+        const formData = new FormData();
+        const blob = new Blob([buffer], { type: contentType });
+        formData.append('file', blob, `product_${productId}.${contentType.split('/')[1]}`);
+        
+        const uploadRes = await fetch(`${EXTERNAL_API_BASE_URL}/fact/product/upload-product-album.html`, {
+          method: 'POST',
+          headers: { 'Cookie': sessionCookie },
+          body: formData
+        });
+        const uploadResult = await uploadRes.json();
+        if (uploadResult.error === 0) {
+          remoteImagePath = uploadResult.file;
+        }
+      } catch (uploadError) {
+        console.error("[Sync] 图片上传失败:", uploadError);
+      }
+    }
+
+    // 3. 构建请求体 (根据终端测试出的正确结构)
+    const params = new URLSearchParams();
+    params.append('platform', 'H5');
+    params.append('sn', product.code);
+    params.append('name', product.name);
+    params.append('price', '0');
+    params.append('productAttrPlaceholder', '1');
+    
+    if (remoteImagePath) {
+      params.append('uploadAlbumFiles[]', remoteImagePath);
+    }
+
+    // 内容/备注
+    const needleField = product.customFields.find(f => f.label.includes('针'));
+    params.append('content', needleField ? needleField.value : "");
+
+    // 4. 处理颜色 (Type: color)
+    const timestamp = Date.now();
+    let colorCount = 0;
+
+    colors.forEach((colorName: string) => {
+      const id = `TMP_C_${timestamp}_${colorCount++}`;
+      
+      params.append(`productAttrNames[${id}]`, colorName);
+      params.append(`productAttrTypes[${id}]`, 'color'); 
+      params.append(`productAttrEnables[${id}]`, '1');
+      
+      // 关联物料 (Yarn Usage)
+      const colorYarns = product.yarnUsages.filter(y => y.color === colorName);
+      colorYarns.forEach((yarn, yIdx) => {
+        const mInfo = initData.materials.find(m => m.name === yarn.materialName && m.spec === (yarn.specification || ""));
+        if (mInfo) {
+          // 用户要求：直接同步重量数字，不进行单位换算
+          params.append(`productAttrColorMaterials[${colorName}][${yIdx}][material_id]`, mInfo.id);
+          params.append(`productAttrColorMaterials[${colorName}][${yIdx}][number]`, yarn.weight || '0');
+        }
+      });
+    });
+
+    // 5. 处理尺码 (Type: size)
+    let sizeCount = 0;
+    sizes.forEach((sizeName: string) => {
+      const id = `TMP_S_${timestamp}_${sizeCount++}`;
+      
+      params.append(`productAttrNames[${id}]`, sizeName);
+      params.append(`productAttrTypes[${id}]`, 'size'); 
+      params.append(`productAttrEnables[${id}]`, '1');
+      
+      // 用户要求：直接同步重量数字
+      const totalWeight = product.yarnUsages.reduce((sum, y) => sum + (parseFloat(y.weight || '0') || 0), 0);
+      if (totalWeight > 0) {
+        params.append(`productAttrWeights[${id}]`, String(totalWeight));
+      }
+    });
+
+    // 6. 发送 POST 请求
+    const response = await fetch(`${EXTERNAL_API_BASE_URL}/fact/product/add.html`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': sessionCookie,
+        'Referer': `${EXTERNAL_API_BASE_URL}/fact/product/add.html`,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: params.toString()
+    });
+
+    const result = await response.json();
+    
+    if (result.error === 0) {
+      await prisma.product.update({ where: { id: productId }, data: { isSynced: true } });
+      revalidatePath('/');
+      return { success: true, message: "同步成功" };
+    } else {
+      const errorMsg = result.errors?.[0]?.message || result.message || "同步失败";
+      return { success: false, message: errorMsg };
+    }
+
+  } catch (error) {
+    console.error("[Sync] Exception:", error);
+    return { success: false, message: "同步过程发生异常" };
   }
 }
 
