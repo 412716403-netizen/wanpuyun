@@ -12,6 +12,7 @@ datasource db {
 
 model Product {
   id           String               @id @default(uuid())
+  tenantId     String               @default("default") // 租户标识 (公司名)
   code         String               // 款号
   name         String               // 品名
   color        String?              // 颜色 (基础)
@@ -26,6 +27,8 @@ model Product {
   customFields ProductCustomField[]
   samples      SampleVersion[]
   yarnUsages   YarnUsage[]
+  
+  @@index([tenantId])
 }
 
 model YarnUsage {
@@ -34,6 +37,9 @@ model YarnUsage {
   materialName String  // 纱线名称
   specification String? // 规格
   weight       String? // 用料克重
+  unit         String? // 单位 (如克、米、颗)
+  materialColor String? // 原料自身的颜色
+  materialType String? // 原料类型 (如毛料、辅料)
   product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId    String
 }
@@ -89,9 +95,12 @@ model Attachment {
 
 model StageTemplate {
   id        String   @id @default(uuid())
-  name      String   @unique
+  tenantId  String   @default("default") // 租户标识
+  name      String   
   order     Int      @default(0)
   createdAt DateTime @default(now())
+
+  @@unique([tenantId, name])
 }
 
 model Log {

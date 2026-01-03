@@ -65,5 +65,8 @@ export interface YarnUsage {
   materialName: string;
   specification?: string;
   weight?: string;
+  unit?: string;
+  materialColor?: string;
+  materialType?: string;
 }
 

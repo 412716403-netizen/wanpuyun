@@ -18,7 +18,10 @@ function mapProduct(dbProduct: any): Product {
       color: y.color,
       materialName: y.materialName,
       specification: y.specification || "",
-      weight: y.weight || ""
+      weight: y.weight || "",
+      unit: (y.unit === '千克' || y.unit === 'kg') ? '克' : (y.unit || "克"),
+      materialColor: y.materialColor || "",
+      materialType: y.materialType || ""
     })) || [],
     status: dbProduct.status as "developing" | "archived",
     isSynced: dbProduct.isSynced,
@@ -122,7 +125,8 @@ export async function getGoodsInitData() {
       name: item.name,
       spec: item.spec || "",
       color: item.color || "",
-      unit: item.unit_name || ""
+      unit: (item.unit_name === '千克' || item.unit_name === 'kg') ? '克' : (item.unit_name || ""),
+      type: item.type?.replace(/<[^>]+>/g, '') || "" // 提取 "毛料" 或 "辅料"
     }));
 
     return { colors, sizes, materials };
@@ -166,7 +170,11 @@ export async function disconnectExternal() {
 }
 
 export async function getProducts() {
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
+
   const dbProducts = await prisma.product.findMany({
+    where: { tenantId },
     include: {
       customFields: true,
       yarnUsages: true,
@@ -186,11 +194,20 @@ export async function getProducts() {
 }
 
 export async function getStageTemplates() {
-  return await prisma.stageTemplate.findMany({ orderBy: { order: 'asc' } })
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
+  return await prisma.stageTemplate.findMany({ 
+    where: { tenantId },
+    orderBy: { order: 'asc' } 
+  })
 }
 
 export async function deleteStageTemplate(id: string) {
-  await prisma.stageTemplate.delete({ where: { id } })
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
+  await prisma.stageTemplate.delete({ 
+    where: { id, tenantId } 
+  })
   revalidatePath('/')
 }
 
@@ -199,20 +216,26 @@ export async function createProduct(data: {
   name: string,
   colors: string[],
   sizes: string[],
-  yarnUsage: { color: string, materialName: string, specification?: string, weight?: string }[],
+  yarnUsage: { color: string, materialName: string, specification?: string, weight?: string, unit?: string, materialColor?: string, materialType?: string }[],
   image?: string,
   customFields: { label: string, value: string }[],
   stages: string[]
 }) {
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
+
   for (const name of data.stages) {
     await prisma.stageTemplate.upsert({
-      where: { name },
+      where: { 
+        tenantId_name: { tenantId, name } 
+      },
       update: {},
-      create: { name, order: 99 }
+      create: { tenantId, name, order: 99 }
     })
   }
   const product = await prisma.product.create({
     data: {
+      tenantId,
       code: data.code,
       name: data.name,
       colorsJson: JSON.stringify(data.colors),
@@ -226,7 +249,10 @@ export async function createProduct(data: {
           color: y.color,
           materialName: y.materialName,
           specification: y.specification,
-          weight: y.weight
+          weight: y.weight,
+          unit: y.unit,
+          materialColor: y.materialColor,
+          materialType: y.materialType
         }))
       },
       samples: {
@@ -252,12 +278,15 @@ export async function updateProduct(id: string, data: {
   name: string,
   colors: string[],
   sizes: string[],
-  yarnUsage: { color: string, materialName: string, specification?: string, weight?: string }[],
+  yarnUsage: { color: string, materialName: string, specification?: string, weight?: string, unit?: string, materialColor?: string, materialType?: string }[],
   image?: string,
   customFields: { label: string, value: string }[]
 }) {
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
+
   await prisma.product.update({
-    where: { id },
+    where: { id, tenantId },
     data: {
       code: data.code,
       name: data.name,
@@ -274,7 +303,10 @@ export async function updateProduct(id: string, data: {
           color: y.color,
           materialName: y.materialName,
           specification: y.specification,
-          weight: y.weight
+          weight: y.weight,
+          unit: y.unit,
+          materialColor: y.materialColor,
+          materialType: y.materialType
         }))
       }
     }
@@ -319,23 +351,29 @@ export async function deleteSampleVersion(sampleId: string) {
 }
 
 export async function toggleProductStatus(id: string, currentStatus: string) {
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
   await prisma.product.update({
-    where: { id },
+    where: { id, tenantId },
     data: { status: currentStatus === 'developing' ? 'archived' : 'developing' }
   })
   revalidatePath('/')
 }
 
 export async function toggleSyncStatus(id: string, currentSync: boolean) {
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
   await prisma.product.update({
-    where: { id },
+    where: { id, tenantId },
     data: { isSynced: !currentSync }
   })
   revalidatePath('/')
 }
 
 export async function deleteProduct(id: string) {
-  await prisma.product.delete({ where: { id } })
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
+  await prisma.product.delete({ where: { id, tenantId } })
   revalidatePath('/')
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Plus, ChevronUp, ChevronDown, Image as ImageIcon, Search, Check, Trash2, ArrowRight, Settings2, Hash, Layers, Scissors, Palette, ListFilter, CheckCircle2 } from "lucide-react";
+import { X, Plus, ChevronUp, ChevronDown, Image as ImageIcon, Search, Check, Trash2, ArrowRight, Settings2, Hash, Layers, Palette, ListFilter, CheckCircle2 } from "lucide-react";
 import { ProductCustomField, YarnUsage } from "@/types";
 
 interface CreateProductModalProps {
@@ -49,7 +49,7 @@ const SelectionModal = ({
   isOpen: boolean, 
   onClose: () => void, 
   title: string, 
-  options: {id: string, name: string, sub?: string, color?: string}[], 
+  options: {id: string, name: string, sub?: string, color?: string, type?: string}[], 
   selectedIds: string[], 
   onConfirm: (ids: string[]) => void,
   onAdd?: (name: string) => void,
@@ -57,23 +57,40 @@ const SelectionModal = ({
 }) => {
   const [search, setSearch] = useState("");
   const [tempSelectedIds, setTempSelectedIds] = useState<string[]>(selectedIds);
+  const [activeType, setActiveType] = useState<string | 'all'>('all');
 
-  React.useEffect(() => { if (isOpen) setTempSelectedIds(selectedIds); }, [isOpen, selectedIds]);
+  React.useEffect(() => { 
+    if (isOpen) {
+      setTempSelectedIds(selectedIds);
+      setSearch("");
+      setActiveType('all');
+    }
+  }, [isOpen, selectedIds]);
+
+  const allTypes = useMemo(() => {
+    const types = new Set(options.map(o => o.type).filter(Boolean));
+    return Array.from(types) as string[];
+  }, [options]);
 
   const filtered = useMemo(() => {
-    return options.filter(opt => 
-      opt.name.toLowerCase().includes(search.toLowerCase()) || 
-      (opt.sub || '').toLowerCase().includes(search.toLowerCase()) ||
-      (opt.color || '').toLowerCase().includes(search.toLowerCase())
-    );
-  }, [options, search]);
+    return options.filter(opt => {
+      const matchSearch = opt.name.toLowerCase().includes(search.toLowerCase()) || 
+        (opt.sub || '').toLowerCase().includes(search.toLowerCase()) ||
+        (opt.color || '').toLowerCase().includes(search.toLowerCase());
+      
+      const matchType = activeType === 'all' || opt.type === activeType;
+      
+      return matchSearch && matchType;
+    });
+  }, [options, search, activeType]);
 
   const toggleItem = (id: string) => {
     setTempSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
   const selectedItems = useMemo(() => {
-    return tempSelectedIds.map(id => options.find(o => o.id === id)).filter(Boolean);
+    const uniqueIds = Array.from(new Set(tempSelectedIds));
+    return uniqueIds.map(id => options.find(o => o.id === id)).filter(Boolean);
   }, [tempSelectedIds, options]);
 
   if (!isOpen) return null;
@@ -129,6 +146,27 @@ const SelectionModal = ({
             )}
           </div>
 
+          {/* 类型筛选页签 */}
+          {allTypes.length > 0 && (
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => setActiveType('all')}
+                className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${activeType === 'all' ? 'bg-slate-900 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              >
+                全部
+              </button>
+              {allTypes.map(t => (
+                <button
+                  key={t}
+                  onClick={() => setActiveType(t)}
+                  className={`px-4 py-2 rounded-xl text-[11px] font-black transition-all ${activeType === t ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto no-scrollbar pr-1">
             <div className="flex flex-col gap-2"> {/* 改为单列布局 */}
               {filtered.length > 0 ? (
@@ -145,6 +183,11 @@ const SelectionModal = ({
                       <div className="flex items-center gap-2 overflow-hidden flex-1">
                         {isMaterial ? (
                           <>
+                            {opt.type && (
+                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black mr-2 ${isSel ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                {opt.type}
+                              </span>
+                            )}
                             <span className={`shrink-0 font-black text-sm tracking-tight ${isSel ? 'text-indigo-100' : 'text-indigo-700'}`}>
                               【{opt.color || '无色'}】
                             </span>
@@ -254,7 +297,10 @@ export const CreateProductModal = ({
         color: activeColorForYarn,
         materialName: mName,
         specification: mInfo?.spec || "",
-        weight: ""
+        weight: "",
+        unit: (mInfo?.unit === '千克' || mInfo?.unit === 'kg') ? '克' : (mInfo?.unit || "克"),
+        materialColor: mInfo?.color || "",
+        materialType: mInfo?.type || ""
       };
     });
 
@@ -434,24 +480,36 @@ export const CreateProductModal = ({
                         <td className="px-10 py-6">
                           <div className="flex flex-wrap gap-4 items-center min-h-[48px]">
                             {newProduct.yarnUsage.filter(y => y.color === c).map((yarn) => (
-                              <div key={yarn.id} className="flex items-center bg-white border border-slate-100 rounded-2xl p-1.5 shadow-sm group/yarn pr-3">
-                                <div className="bg-indigo-600 text-white rounded-xl p-2 mr-3 shadow-md shrink-0">
-                                  <Scissors className="w-4 h-4" />
+                              <div key={yarn.id} className="flex items-center bg-white border border-slate-100 rounded-2xl p-1.5 shadow-sm pr-3">
+                                <div className="flex flex-col px-3 border-r border-slate-100 mr-4 max-w-[180px]">
+                                  <div className="flex items-center gap-2">
+                                    {yarn.materialColor && (
+                                      <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md shrink-0">
+                                        {yarn.materialColor}
+                                      </span>
+                                    )}
+                                    <span className="text-xs font-bold text-slate-900 truncate">{yarn.materialName}</span>
+                                  </div>
+                                  <span className="text-[9px] text-slate-400 font-bold truncate tracking-tighter mt-0.5">
+                                    {yarn.materialType && (
+                                      <span className={`mr-1.5 px-1 py-0.5 rounded text-[8px] ${yarn.materialType === '辅料' ? 'bg-orange-50 text-orange-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                        {yarn.materialType}
+                                      </span>
+                                    )}
+                                    {yarn.specification || '默认规格'}
+                                  </span>
                                 </div>
-                                <div className="flex flex-col mr-4 max-w-[150px]">
-                                  <span className="text-xs font-bold text-slate-900 truncate">{yarn.materialName}</span>
-                                  <span className="text-[9px] text-slate-400 font-bold truncate tracking-tighter">{yarn.specification || '默认规格'}</span>
-                                </div>
-                                <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl px-3 h-9 focus-within:ring-4 focus-within:ring-indigo-500/10 focus-within:bg-white transition-all">
+                                <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl px-2.5 h-8 focus-within:ring-4 focus-within:ring-indigo-500/10 focus-within:bg-white transition-all">
                                   <input 
                                     value={yarn.weight}
                                     onChange={(e) => updateYarnUsage(yarn.id, 'weight', e.target.value)}
                                     placeholder="0" 
-                                    className="w-12 text-center bg-transparent outline-none font-black text-indigo-600 text-sm" 
+                                    className="w-10 text-center bg-transparent outline-none font-black text-indigo-600 text-sm" 
                                   />
-                                  <span className="text-[10px] font-bold text-slate-400 ml-1">g</span>
+                                  <span className="text-[10px] font-bold text-slate-400 ml-0.5 whitespace-nowrap">
+                                    {yarn.unit === '千克' ? '克' : (yarn.unit || '克')}
+                                  </span>
                                 </div>
-                                <button onClick={() => removeYarnUsage(yarn.id)} className="ml-3 p-1.5 text-slate-200 hover:text-red-500 transition-colors"><X className="w-4 h-4" /></button>
                               </div>
                             ))}
                             
@@ -539,7 +597,7 @@ export const CreateProductModal = ({
           onClose={() => setSelectionType(null)}
           title="选取款式生产颜色"
           options={colorDict}
-          selectedIds={newProduct.colors.map(name => colorDict.find(d => d.name === name)?.id || name)}
+          selectedIds={Array.from(new Set(newProduct.colors.map(name => colorDict.find(d => d.name === name)?.id || name)))}
           onConfirm={confirmColors}
           onAdd={(name) => onAddDictItem('color', name)}
           placeholder="搜索颜色..."
@@ -549,7 +607,7 @@ export const CreateProductModal = ({
           onClose={() => setSelectionType(null)}
           title="选取尺码范围"
           options={sizeDict}
-          selectedIds={newProduct.sizes.map(name => sizeDict.find(d => d.name === name)?.id || name)}
+          selectedIds={Array.from(new Set(newProduct.sizes.map(name => sizeDict.find(d => d.name === name)?.id || name)))}
           onConfirm={confirmSizes}
           onAdd={(name) => onAddDictItem('size', name)}
           placeholder="搜索尺码..."
@@ -561,13 +619,14 @@ export const CreateProductModal = ({
           options={materialDict.map(m => ({ 
             id: m.id, 
             name: m.name, 
-            sub: m.spec || "标准规格",
-            color: m.color || "无色"
+            sub: `${m.spec || "标准规格"} (${(m.unit === '千克' || m.unit === 'kg') ? '克' : (m.unit || "克")})`,
+            color: m.color || "无色",
+            type: m.type
           }))}
-          selectedIds={newProduct.yarnUsage.filter(y => y.color === activeColorForYarn).map(y => {
+          selectedIds={Array.from(new Set(newProduct.yarnUsage.filter(y => y.color === activeColorForYarn).map(y => {
             const mInfo = materialDict.find(m => m.name === y.materialName && m.spec === y.specification);
             return mInfo?.id || y.materialName;
-          })}
+          })))}
           onConfirm={confirmYarnMaterials}
           onAdd={(name) => onAddDictItem('material', name)}
           placeholder="搜索原料、规格或色号..."
