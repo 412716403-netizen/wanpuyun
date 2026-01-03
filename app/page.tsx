@@ -25,6 +25,7 @@ import {
   externalLogin,
   disconnectExternal
 } from "./actions";
+import { Plus } from "lucide-react";
 import { 
   Product, 
   Stage, 
@@ -39,7 +40,7 @@ export default function Dashboard() {
   const [templates, setTemplates] = useState<{ id: string, name: string }[]>([]);
   const [colorDict, setColorDict] = useState<{ id: string, name: string }[]>([]);
   const [sizeDict, setSizeDict] = useState<{ id: string, name: string }[]>([]);
-  const [materialDict, setMaterialDict] = useState<{ id: string, name: string }[]>([]);
+  const [materialDict, setMaterialDict] = useState<{ id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [activeSampleId, setActiveSampleId] = useState<string>("");
@@ -490,11 +491,22 @@ export default function Dashboard() {
         />
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center bg-white m-6 rounded-[48px] shadow-sm">
-          <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6">
-            <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-500 rounded-full animate-spin" />
+          <div className="w-32 h-32 bg-slate-50 rounded-full flex items-center justify-center mb-8">
+            <div className="w-16 h-16 text-slate-200">
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+            </div>
           </div>
-          <h3 className="text-xl font-bold text-slate-900 mb-2">正在准备数据</h3>
-          <p className="text-slate-400 text-sm">如果长时间没有反应，请检查数据库连接</p>
+          <h3 className="text-2xl font-black text-slate-900 mb-3 tracking-tight">暂无款式数据</h3>
+          <p className="text-slate-400 text-sm mb-8 max-w-xs text-center font-medium">您还没有创建任何款式，或者当前筛选条件下没有匹配的内容。</p>
+          <button 
+            onClick={handleCreateOpen}
+            className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-sm shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-3"
+          >
+            <Plus className="w-5 h-5" />
+            立即录入首个款式
+          </button>
         </div>
       )}
 

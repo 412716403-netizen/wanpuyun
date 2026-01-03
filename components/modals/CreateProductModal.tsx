@@ -21,7 +21,7 @@ interface CreateProductModalProps {
   setStageInput: (s: string) => void;
   colorDict: { id: string, name: string }[];
   sizeDict: { id: string, name: string }[];
-  materialDict: { id: string, name: string, spec?: string, color?: string }[];
+  materialDict: { id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[];
   onAddDictItem: (type: string, name: string) => Promise<boolean>;
   onAddCustomField: () => void;
   onRemoveCustomField: (id: string) => void;
