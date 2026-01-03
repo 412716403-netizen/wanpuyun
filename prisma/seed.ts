@@ -9,7 +9,9 @@ async function main() {
   await prisma.stage.deleteMany()
   await prisma.sampleVersion.deleteMany()
   await prisma.productCustomField.deleteMany()
+  await prisma.yarnUsage.deleteMany()
   await prisma.product.deleteMany()
+  await prisma.stageTemplate.deleteMany()
 
   console.log('正在注入初始数据...')
 
@@ -41,6 +43,7 @@ async function main() {
   // 创建款式 PROD-1
   const product1 = await prisma.product.create({
     data: {
+      tenantId: 'default',
       code: '202020',
       name: '202020',
       status: 'developing',
@@ -92,6 +95,7 @@ async function main() {
   // 再创建一个款式作为对比
   await prisma.product.create({
     data: {
+      tenantId: 'default',
       code: 'SY-8821',
       name: '复古粗花呢毛衣',
       status: 'developing',
@@ -131,4 +135,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect()
   })
-
