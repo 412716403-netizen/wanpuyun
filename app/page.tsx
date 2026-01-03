@@ -6,6 +6,7 @@ import { MainContent } from "@/components/MainContent";
 import { CreateProductModal } from "@/components/modals/CreateProductModal";
 import { NodeInfoModal } from "@/components/modals/NodeInfoModal";
 import { LogModal } from "@/components/modals/LogModal";
+import { ConnectModal } from "@/components/modals/ConnectModal";
 import { 
   getProducts, 
   createProduct, 
@@ -17,53 +18,92 @@ import {
   deleteStageTemplate,
   createSampleVersion,
   deleteSampleVersion,
-  deleteProduct
+  deleteProduct,
+  getGoodsInitData,
+  addDictItem,
+  getConnectedInfo,
+  externalLogin,
+  disconnectExternal
 } from "./actions";
 import { 
   Product, 
   Stage, 
   ProductCustomField, 
-  StageStatus 
+  StageStatus,
+  YarnUsage
 } from "@/types";
 
 export default function Dashboard() {
   // --- States ---
   const [products, setProducts] = useState<Product[]>([]);
   const [templates, setTemplates] = useState<{ id: string, name: string }[]>([]);
+  const [colorDict, setColorDict] = useState<{ id: string, name: string }[]>([]);
+  const [sizeDict, setSizeDict] = useState<{ id: string, name: string }[]>([]);
+  const [materialDict, setMaterialDict] = useState<{ id: string, name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [activeSampleId, setActiveSampleId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"developing" | "archived">("developing");
   const [searchQuery, setSearchQuery] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false); // 新增提交锁定状态
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [connectedInfo, setConnectedInfo] = useState({ isConnected: false, company: "" });
 
   // 初始化加载数据
   useEffect(() => {
     async function loadData() {
       try {
-        const [productsData, templatesData] = await Promise.all([
+        const [productsData, templatesData, connInfo] = await Promise.all([
           getProducts(),
-          getStageTemplates()
+          getStageTemplates(),
+          getConnectedInfo()
         ]);
         setProducts(productsData);
         setTemplates(templatesData);
+        setConnectedInfo(connInfo);
+        
         if (productsData.length > 0) {
           setSelectedProductId(productsData[0].id);
           setActiveSampleId(productsData[0].samples[0].id);
         }
+
+        setLoading(false);
+
+        // 如果已连接，则加载初始化数据
+        if (connInfo.isConnected) {
+          const initData = await getGoodsInitData();
+          if (initData) {
+            setColorDict(initData.colors);
+            setSizeDict(initData.sizes);
+            setMaterialDict(initData.materials);
+          }
+        }
+
       } catch (error) {
         console.error("Failed to load data:", error);
-      } finally {
         setLoading(false);
       }
     }
     loadData();
   }, []);
+
+  const refreshDicts = async () => {
+    try {
+      const data = await getGoodsInitData();
+      if (data) {
+        setColorDict(data.colors);
+        setSizeDict(data.sizes);
+        setMaterialDict(data.materials);
+      }
+    } catch (err) {
+      console.error("Failed to load init data:", err);
+    }
+  };
   
   // Modals visibility
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isNodeModalOpen, setIsNodeModalOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
@@ -76,7 +116,15 @@ export default function Dashboard() {
   const [filters, setFilters] = useState({ syncStatus: 'all', stageName: 'all' });
 
   // Create Product states
-  const [newProduct, setNewProduct] = useState({ code: "", name: "", image: "", customFields: [] as ProductCustomField[] });
+  const [newProduct, setNewProduct] = useState({ 
+    code: "", 
+    name: "", 
+    image: "", 
+    colors: [] as string[],
+    sizes: [] as string[],
+    yarnUsage: [] as YarnUsage[],
+    customFields: [] as ProductCustomField[] 
+  });
   const [newProductFieldInput, setNewProductFieldInput] = useState({ label: "", value: "" });
   const [newProductStages, setNewProductStages] = useState<string[]>([]);
   const [stageInput, setStageInput] = useState("");
@@ -87,18 +135,13 @@ export default function Dashboard() {
   const uniqueStageNames = Array.from(new Set(products.flatMap((p: Product) => p.samples?.flatMap(s => s.stages.map(st => st.name)) || [])));
 
   const filteredProducts = products.filter((p: Product) => {
-    // 1. 状态 Tab 过滤
     if (p.status !== activeTab) return false;
-    
-    // 2. 搜索框过滤 (货号或名称)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchCode = p.code.toLowerCase().includes(q);
       const matchName = p.name.toLowerCase().includes(q);
       if (!matchCode && !matchName) return false;
     }
-
-    // 3. 高级筛选
     if (filters.syncStatus === 'synced' && !p.isSynced) return false;
     if (filters.syncStatus === 'unsynced' && p.isSynced) return false;
     if (filters.stageName !== 'all') {
@@ -117,6 +160,9 @@ export default function Dashboard() {
       ]);
       setProducts(productsData);
       setTemplates(templatesData);
+      if (connectedInfo.isConnected) {
+        refreshDicts();
+      }
     } catch (error) {
       console.error("Refresh failed:", error);
     }
@@ -129,13 +175,31 @@ export default function Dashboard() {
     if (product) setActiveSampleId(product.samples[0].id);
   };
 
+  const handleConnect = async (company: string, user: string, pass: string) => {
+    const result = await externalLogin(company, user, pass);
+    if (result.success) {
+      const info = await getConnectedInfo();
+      setConnectedInfo(info);
+      refreshDicts();
+    }
+    return result;
+  };
+
+  const handleDisconnect = async () => {
+    if (confirm("确定要断开与生产系统的连接吗？")) {
+      await disconnectExternal();
+      setConnectedInfo({ isConnected: false, company: "" });
+      setColorDict([]);
+      setSizeDict([]);
+      setMaterialDict([]);
+    }
+  };
+
   const handleCreateProduct = async () => {
-    if (isSubmitting) return; // 如果正在提交中，直接拦截
+    if (isSubmitting) return;
     setIsSubmitting(true);
     
     try {
-      // 自动合并未点加号的自定义字段
-      // ... 逻辑保持不变 ...
       let finalCustomFields = [...newProduct.customFields];
       if (newProductFieldInput.label.trim()) {
         finalCustomFields.push({
@@ -149,6 +213,9 @@ export default function Dashboard() {
         await updateProduct(selectedProductId, {
           code: newProduct.code,
           name: newProduct.name,
+          colors: newProduct.colors,
+          sizes: newProduct.sizes,
+          yarnUsage: newProduct.yarnUsage,
           image: newProduct.image,
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value }))
         });
@@ -157,6 +224,9 @@ export default function Dashboard() {
         const newId = await createProduct({
           code: newProduct.code,
           name: newProduct.name,
+          colors: newProduct.colors,
+          sizes: newProduct.sizes,
+          yarnUsage: newProduct.yarnUsage,
           image: newProduct.image,
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value })),
           stages: newProductStages
@@ -166,19 +236,27 @@ export default function Dashboard() {
       }
       setIsCreateModalOpen(false);
       setIsEditMode(false);
-      setNewProduct({ code: "", name: "", image: "", customFields: [] });
+      setNewProduct({ code: "", name: "", image: "", colors: [], sizes: [], yarnUsage: [], customFields: [] });
       setNewProductFieldInput({ label: "", value: "" }); 
       setNewProductStages([]);
     } catch (error) {
       console.error("Save failed:", error);
       alert("保存失败，原因可能是：\n1. 图片文件太大，超出了服务器限制\n2. 网络连接超时\n\n请尝试换一张较小的图片测试，或检查 Zeabur 日志。");
     } finally {
-      setIsSubmitting(false); // 无论成功失败，最后都解除锁定
+      setIsSubmitting(false);
     }
   };
 
   const handleEditProduct = (p: Product) => {
-    setNewProduct({ code: p.code, name: p.name, image: p.image || "", customFields: [...p.customFields] });
+    setNewProduct({ 
+      code: p.code, 
+      name: p.name, 
+      image: p.image || "", 
+      colors: p.colors || [],
+      sizes: p.sizes || [],
+      yarnUsage: p.yarnUsage || [],
+      customFields: [...p.customFields] 
+    });
     setIsEditMode(true);
     setIsCreateModalOpen(true);
   };
@@ -189,11 +267,8 @@ export default function Dashboard() {
     
     try {
       const { sampleId, stageId } = editingStage;
-      
-      // 获取原始节点信息以便对比
       const stage = currentSample?.stages.find(st => st.id === stageId);
       
-      // 自动合并未点加号的工艺参数
       let finalFields = [...tempFields];
       if (fieldInput.label.trim()) {
         finalFields.push({
@@ -203,7 +278,6 @@ export default function Dashboard() {
         });
       }
 
-      // 构建详细日志
       const statusMap: Record<StageStatus, string> = {
         pending: "待开始",
         in_progress: "进行中",
@@ -236,12 +310,12 @@ export default function Dashboard() {
         status: tempStatus,
         fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
         attachments: tempAttachments.map(a => ({ fileName: a.fileName, fileUrl: a.fileUrl })),
-        userName: "Jun Zheng", // 实际应从 Auth 获取
+        userName: "Jun Zheng",
         logDetail: logDetail.trim()
       });
 
       await refreshData();
-      setFieldInput({ label: "", value: "" }); // 重置输入框
+      setFieldInput({ label: "", value: "" });
       setIsNodeModalOpen(false);
     } catch (error) {
       console.error("Save node info failed:", error);
@@ -254,13 +328,10 @@ export default function Dashboard() {
   const handleAddSample = async () => {
     if (!selectedProduct || isSubmitting) return;
     setIsSubmitting(true);
-    
     try {
-      // 自动计算新轮次名称，如“二样”、“三样”
       const sampleNames = ["头样", "二样", "三样", "四样", "五样", "大货样"];
       const currentCount = selectedProduct.samples.length;
       const nextName = sampleNames[currentCount] || `${currentCount + 1}样`;
-
       const newSampleId = await createSampleVersion(selectedProduct.id, nextName);
       await refreshData();
       setActiveSampleId(newSampleId);
@@ -274,15 +345,10 @@ export default function Dashboard() {
   const handleDeleteSample = async (sampleId: string) => {
     if (!selectedProduct || isSubmitting) return;
     setIsSubmitting(true);
-    
     try {
       await deleteSampleVersion(sampleId);
-      
-      // 重新获取数据
       const data = await getProducts();
       setProducts(data);
-      
-      // 重新计算选中状态：如果删掉的是当前激活的，切换到第一个
       const currentProduct = data.find((p: Product) => p.id === selectedProductId);
       if (currentProduct && currentProduct.samples.length > 0) {
         if (activeSampleId === sampleId) {
@@ -319,17 +385,17 @@ export default function Dashboard() {
 
   const handleCreateOpen = () => {
     setIsEditMode(false);
-    
-    // 获取最近一个产品的自定义字段标签
-    const lastProduct = products[0]; // products 按 createdAt 倒序排列
+    const lastProduct = products[0];
     const initialCustomFields = lastProduct 
       ? lastProduct.customFields.map(cf => ({ id: `cf-${Date.now()}-${Math.random()}`, label: cf.label, value: "" }))
       : [];
-
     setNewProduct({ 
       code: "", 
       name: "", 
       image: "", 
+      colors: [],
+      sizes: [],
+      yarnUsage: [],
       customFields: initialCustomFields 
     });
     setNewProductStages([]);
@@ -340,7 +406,6 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen bg-[#F3F4F6] overflow-hidden">
-      
       <ProductSidebar 
         products={products}
         filteredProducts={filteredProducts}
@@ -356,6 +421,9 @@ export default function Dashboard() {
         filters={filters}
         setFilters={setFilters}
         uniqueStageNames={uniqueStageNames}
+        connectedInfo={connectedInfo}
+        onConnectOpen={() => setIsConnectModalOpen(true)}
+        onDisconnect={handleDisconnect}
       />
 
       {selectedProduct ? (
@@ -395,28 +463,22 @@ export default function Dashboard() {
           onNodeRegister={(stage) => {
             if (!selectedProduct) return;
             setEditingStage({ productId: selectedProduct.id, sampleId: activeSampleId, stageId: stage.id });
-            
-            // 如果当前节点没有参数，尝试从其他产品的相同名称节点中获取默认参数名
             let initialFields = stage.fields.map((f: any) => ({ id: f.id, label: f.label, value: String(f.value) }));
-            
             if (initialFields.length === 0) {
-              // 遍历所有产品，寻找相同名称且有参数的节点
               for (const p of products) {
                 const sameStageWithFields = p.samples
                   .flatMap(s => s.stages)
                   .find(st => st.name === stage.name && st.fields.length > 0);
-                
                 if (sameStageWithFields) {
                   initialFields = sameStageWithFields.fields.map(f => ({
                     id: `f-${Date.now()}-${Math.random()}`,
                     label: f.label,
                     value: ""
                   }));
-                  break; // 找到最近的一个就停止
+                  break;
                 }
               }
             }
-
             setTempFields(initialFields);
             setTempAttachments(stage.attachments || []);
             setTempStatus(stage.status);
@@ -446,6 +508,16 @@ export default function Dashboard() {
           newProductStages={newProductStages}
           stageInput={stageInput}
           setStageInput={setStageInput}
+          colorDict={colorDict}
+          sizeDict={sizeDict}
+          materialDict={materialDict}
+          onAddDictItem={async (type, name) => {
+            const ok = await addDictItem(type, name);
+            if (ok) {
+              refreshDicts();
+            }
+            return ok;
+          }}
           onAddCustomField={() => {
             if (newProductFieldInput.label.trim()) {
               setNewProduct({ ...newProduct, customFields: [...newProduct.customFields, { id: `cf-${Date.now()}`, label: newProductFieldInput.label.trim(), value: newProductFieldInput.value.trim() }] });
@@ -506,6 +578,13 @@ export default function Dashboard() {
         <LogModal 
           currentSample={currentSample}
           onClose={() => setIsLogModalOpen(false)}
+        />
+      )}
+
+      {isConnectModalOpen && (
+        <ConnectModal 
+          onClose={() => setIsConnectModalOpen(false)}
+          onConnect={handleConnect}
         />
       )}
     </div>

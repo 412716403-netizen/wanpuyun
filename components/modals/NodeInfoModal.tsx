@@ -37,12 +37,12 @@ export const NodeInfoModal = ({
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
-        const newAttachment = {
-          id: `att-${Date.now()}`,
-          fileName: file.name,
+      const newAttachment = {
+        id: `att-${Date.now()}`,
+        fileName: file.name,
           fileUrl: base64String
-        };
-        setTempAttachments([...tempAttachments, newAttachment]);
+      };
+      setTempAttachments([...tempAttachments, newAttachment]);
       };
       reader.readAsDataURL(file);
     }
@@ -125,19 +125,19 @@ export const NodeInfoModal = ({
                 {tempAttachments.map(file => {
                   const isImage = file.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i);
                   return (
-                    <div key={file.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl group/file">
-                      <div className="flex items-center gap-3 overflow-hidden">
+                  <div key={file.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl group/file">
+                    <div className="flex items-center gap-3 overflow-hidden">
                         <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
                           {isImage ? (
                             <img src={file.fileUrl} className="w-full h-full object-cover" />
                           ) : file.fileName.match(/\.(zip|rar|7z)$/i) ? (
                             <FileArchive className="w-5 h-5 text-amber-500" />
                           ) : (
-                            <FileText className="w-5 h-5 text-indigo-500" />
+                        <FileText className="w-5 h-5 text-indigo-500" />
                           )}
-                        </div>
-                        <div className="overflow-hidden">
-                          <p className="text-sm font-bold text-slate-700 truncate">{file.fileName}</p>
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-sm font-bold text-slate-700 truncate">{file.fileName}</p>
                           <div className="flex gap-3">
                             <a href={file.fileUrl} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-500 hover:underline">预览</a>
                             <button 
@@ -147,15 +147,15 @@ export const NodeInfoModal = ({
                               下载
                             </button>
                           </div>
-                        </div>
                       </div>
-                      <button 
-                        onClick={() => setTempAttachments(tempAttachments.filter(a => a.id !== file.id))}
-                        className="p-2 opacity-0 group-hover/file:opacity-100 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
                     </div>
+                    <button 
+                      onClick={() => setTempAttachments(tempAttachments.filter(a => a.id !== file.id))}
+                      className="p-2 opacity-0 group-hover/file:opacity-100 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                   );
                 })}
               </div>

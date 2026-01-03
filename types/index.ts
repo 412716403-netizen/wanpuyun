@@ -46,11 +46,24 @@ export interface Product {
   id: string;
   code: string;
   name: string;
+  color?: string;
+  size?: string;
+  colors: string[];
+  sizes: string[];
+  yarnUsage: YarnUsage[];
   customFields: ProductCustomField[];
   status: "developing" | "archived";
   isSynced: boolean;
   createdAt: string;
   image?: string;
   samples: SampleVersion[];
+}
+
+export interface YarnUsage {
+  id: string;
+  color: string;
+  materialName: string;
+  specification?: string;
+  weight?: string;
 }
 
