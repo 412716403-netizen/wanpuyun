@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+*.db
+*.db-journal
+.env
+.DS_Store
+README.md
+RESOURCES.md
+PROGRESS.md
+docker-compose.yml
+Dockerfile
+.dockerignore

@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   // 标准路径 (Next.js 15+)
   serverActions: {
     bodySizeLimit: '100mb',

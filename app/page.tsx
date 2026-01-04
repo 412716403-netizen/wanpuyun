@@ -241,7 +241,7 @@ export default function Dashboard() {
       setNewProductStages([]);
     } catch (error) {
       console.error("Save failed:", error);
-      alert("保存失败，原因可能是：\n1. 图片文件太大，超出了服务器限制\n2. 网络连接超时\n\n请尝试换一张较小的图片测试，或检查 Zeabur 日志。");
+      alert("保存失败，原因可能是：\n1. 图片文件太大，超出了服务器限制\n2. 网络连接超时\n\n请尝试换一张较小的图片测试，或检查阿里云服务器日志。");
     } finally {
       setIsSubmitting(false);
     }
