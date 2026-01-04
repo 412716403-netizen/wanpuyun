@@ -28,6 +28,7 @@ model Product {
   samples      SampleVersion[]
   yarnUsages   YarnUsage[]
   
+  @@unique([id, tenantId])
   @@index([tenantId])
 }
 
@@ -100,6 +101,7 @@ model StageTemplate {
   order     Int      @default(0)
   createdAt DateTime @default(now())
 
+  @@unique([id, tenantId])
   @@unique([tenantId, name])
 }
 

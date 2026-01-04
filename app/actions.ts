@@ -275,14 +275,27 @@ export async function addDictItem(type: string, name: string) {
     const typeMap: Record<string, string> = { 'color': '3', 'size': '2', 'material': '1' };
     const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
     if (sessionCookie) headers['Cookie'] = sessionCookie;
+
+    console.log(`[DictAdd] 开始创建字典项: 类型=${type}(${typeMap[type]}), 名称=${name}`);
+
     const response = await fetch(`${EXTERNAL_API_BASE_URL}/fact/dict/add.html`, {
       method: 'POST',
       headers,
       body: new URLSearchParams({ type: typeMap[type] || type, name, platform: 'H5' }).toString()
     });
+    
     const result = await response.json();
-    return result.error === 0;
-  } catch (error) { return false; }
+    if (result.error === 0) {
+      console.log(`[DictAdd] 创建成功: ${name}`);
+      return true;
+    } else {
+      console.error(`[DictAdd] 创建失败: ${result.message || '未知错误'}`);
+      return false;
+    }
+  } catch (error) { 
+    console.error("[DictAdd] 发生异常:", error);
+    return false; 
+  }
 }
 
 export async function getConnectedInfo() {
@@ -337,7 +350,7 @@ export async function deleteStageTemplate(id: string) {
   const cookieStore = await cookies();
   const tenantId = cookieStore.get('connected_company')?.value || "default";
   await prisma.stageTemplate.delete({ 
-    where: { id, tenantId } 
+    where: { id_tenantId: { id, tenantId } } 
   })
   revalidatePath('/')
 }
@@ -417,7 +430,7 @@ export async function updateProduct(id: string, data: {
   const tenantId = cookieStore.get('connected_company')?.value || "default";
 
   await prisma.product.update({
-    where: { id, tenantId },
+    where: { id_tenantId: { id, tenantId } },
     data: {
       code: data.code,
       name: data.name,
@@ -485,7 +498,7 @@ export async function toggleProductStatus(id: string, currentStatus: string) {
   const cookieStore = await cookies();
   const tenantId = cookieStore.get('connected_company')?.value || "default";
   await prisma.product.update({
-    where: { id, tenantId },
+    where: { id_tenantId: { id, tenantId } },
     data: { status: currentStatus === 'developing' ? 'archived' : 'developing' }
   })
   revalidatePath('/')
@@ -495,7 +508,7 @@ export async function toggleSyncStatus(id: string, currentSync: boolean) {
   const cookieStore = await cookies();
   const tenantId = cookieStore.get('connected_company')?.value || "default";
   await prisma.product.update({
-    where: { id, tenantId },
+    where: { id_tenantId: { id, tenantId } },
     data: { isSynced: !currentSync }
   })
   revalidatePath('/')
@@ -504,7 +517,9 @@ export async function toggleSyncStatus(id: string, currentSync: boolean) {
 export async function deleteProduct(id: string) {
   const cookieStore = await cookies();
   const tenantId = cookieStore.get('connected_company')?.value || "default";
-  await prisma.product.delete({ where: { id, tenantId } })
+  await prisma.product.delete({ 
+    where: { id_tenantId: { id, tenantId } } 
+  })
   revalidatePath('/')
 }
 
