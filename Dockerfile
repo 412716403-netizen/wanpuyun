@@ -7,7 +7,7 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma/
 # 使用国内镜像源加速安装
 RUN npm config set registry https://registry.npmmirror.com
-RUN npm ci
+RUN npm install
 
 # --- 阶段 2: 编译打包 ---
 FROM node:20-alpine AS builder
