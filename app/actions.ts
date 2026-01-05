@@ -213,7 +213,7 @@ export async function syncProductToExternal(productId: string) {
       // 关联物料 (Yarn Usage)
       const colorYarns = product.yarnUsages.filter(y => y.color === colorName);
       colorYarns.forEach((yarn, yIdx) => {
-        const mInfo = initData.materials.find(m => m.name === yarn.materialName && m.spec === (yarn.specification || ""));
+        const mInfo = initData.materials.find((m: any) => m.name === yarn.materialName && m.spec === (yarn.specification || ""));
         if (mInfo) {
           // 用户要求：直接同步重量数字，不进行单位换算
           params.append(`productAttrColorMaterials[${colorName}][${yIdx}][material_id]`, mInfo.id);
