@@ -462,19 +462,6 @@ export default function Dashboard() {
               setIsSubmitting(false);
             }
           }}
-          onToggleSync={async (id) => {
-            if (isSubmitting) return;
-            setIsSubmitting(true);
-            try {
-              const p = products.find((product: Product) => product.id === id);
-              if (p) {
-                await toggleSyncStatus(id, p.isSynced);
-                await refreshData();
-              }
-            } finally {
-              setIsSubmitting(false);
-            }
-          }}
           onNodeRegister={(stage) => {
             if (!selectedProduct) return;
             setEditingStage({ productId: selectedProduct.id, sampleId: activeSampleId, stageId: stage.id });
