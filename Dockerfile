@@ -39,4 +39,4 @@
     ENV HOSTNAME="0.0.0.0"
     
     # 启动脚本：先运行数据库迁移，再启动应用
-    CMD ["sh", "-c", "npx prisma@5.22.0 migrate deploy && node server.js"]
+    CMD ["node", "server.js"]
