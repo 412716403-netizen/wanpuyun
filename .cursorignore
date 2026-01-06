@@ -1,0 +1,19 @@
+# 忽略 Next.js 编译产物
+.next/
+out/
+
+# 忽略依赖包
+node_modules/
+
+# 忽略数据库文件（尤其是包含 Base64 图片数据的 dev.db）
+prisma/dev.db
+prisma/dev.db-journal
+*.db
+
+# 忽略日志和缓存
+*.log
+.cache/
+.DS_Store
+
+# 忽略 Git 历史
+.git/

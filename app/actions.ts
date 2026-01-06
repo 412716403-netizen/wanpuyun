@@ -66,13 +66,30 @@ function mapProduct(dbProduct: any): Product {
 // 外部接口配置
 const EXTERNAL_API_BASE_URL = "https://www.wanpuxx.com"; 
 
+// 辅助函数：带超时的 fetch
+async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number }) {
+  const { timeout = 10000 } = options; // 默认 10 秒超时
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    return response;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 export async function externalLogin(company: string, user: string, pass: string) {
   if (!EXTERNAL_API_BASE_URL) return { success: false, message: "请配置域名" };
   try {
-    const response = await fetch(`${EXTERNAL_API_BASE_URL}/fact/admin/login.html`, {
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/admin/login.html`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ fact: company, username: user, password: pass, platform: 'H5' }).toString(),
+      timeout: 15000 // 登录稍微给长一点时间
     });
 
     const setCookieHeader = response.headers.get('set-cookie');
@@ -93,7 +110,10 @@ export async function externalLogin(company: string, user: string, pass: string)
       return { success: true, message: "连接成功" };
     }
     return { success: false, message: result.message || "登录失败" };
-  } catch (error) { return { success: false, message: "连接异常" }; }
+  } catch (error) { 
+    console.error("[Login] Connection failed or timeout:", error);
+    return { success: false, message: "连接生产系统超时或异常，请检查网络" }; 
+  }
 }
 
 // 获取商品录入所需的初始化数据（颜色、尺码、原料）
@@ -109,11 +129,12 @@ export async function getGoodsInitData() {
       'Cookie': sessionCookie 
     };
 
+    console.log("[InitData] 开始从外部系统拉取字典数据...");
     // 1. 获取颜色 (type=3) 和 尺码 (type=2)
     const [cRes, sRes, mRes] = await Promise.all([
-      fetch(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { method: 'POST', headers, body: 'type=3&platform=H5&limit=1000&pageSize=1000&per-page=1000' }),
-      fetch(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { method: 'POST', headers, body: 'type=2&platform=H5&limit=1000&pageSize=1000&per-page=1000' }),
-      fetch(`${EXTERNAL_API_BASE_URL}/fact/material/list-data.html`, { method: 'POST', headers, body: 'platform=H5&limit=1000&pageSize=1000&per-page=1000' })
+      fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { method: 'POST', headers, body: 'type=3&platform=H5&limit=1000&pageSize=1000&per-page=1000', timeout: 10000 }),
+      fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { method: 'POST', headers, body: 'type=2&platform=H5&limit=1000&pageSize=1000&per-page=1000', timeout: 10000 }),
+      fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/list-data.html`, { method: 'POST', headers, body: 'platform=H5&limit=1000&pageSize=1000&per-page=1000', timeout: 10000 })
     ]);
 
     const [cData, sData, mData] = await Promise.all([cRes.json(), sRes.json(), mRes.json()]);
@@ -129,9 +150,10 @@ export async function getGoodsInitData() {
       type: item.type?.replace(/<[^>]+>/g, '') || "" // 提取 "毛料" 或 "辅料"
     }));
 
+    console.log(`[InitData] 拉取完成: 颜色x${colors.length}, 尺码x${sizes.length}, 原料x${materials.length}`);
     return { colors, sizes, materials };
   } catch (error) { 
-    console.error("[InitData] 严重异常:", error);
+    console.error("[InitData] 严重异常或超时:", error);
     return null; 
   }
 }
@@ -169,10 +191,11 @@ export async function syncProductToExternal(productId: string) {
         const blob = new Blob([buffer], { type: contentType });
         formData.append('file', blob, `product_${productId}.${contentType.split('/')[1]}`);
         
-        const uploadRes = await fetch(`${EXTERNAL_API_BASE_URL}/fact/product/upload-product-album.html`, {
+        const uploadRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/product/upload-product-album.html`, {
           method: 'POST',
           headers: { 'Cookie': sessionCookie },
-          body: formData
+          body: formData,
+          timeout: 30000 // 图片上传给 30 秒
         });
         const uploadResult = await uploadRes.json();
         if (uploadResult.error === 0) {
@@ -239,7 +262,7 @@ export async function syncProductToExternal(productId: string) {
     });
 
     // 6. 发送 POST 请求
-    const response = await fetch(`${EXTERNAL_API_BASE_URL}/fact/product/add.html`, {
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/product/add.html`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -247,7 +270,8 @@ export async function syncProductToExternal(productId: string) {
         'Referer': `${EXTERNAL_API_BASE_URL}/fact/product/add.html`,
         'X-Requested-With': 'XMLHttpRequest'
       },
-      body: params.toString()
+      body: params.toString(),
+      timeout: 20000
     });
 
     const result = await response.json();
@@ -278,10 +302,11 @@ export async function addDictItem(type: string, name: string) {
 
     console.log(`[DictAdd] 开始创建字典项: 类型=${type}(${typeMap[type]}), 名称=${name}`);
 
-    const response = await fetch(`${EXTERNAL_API_BASE_URL}/fact/dict/add.html`, {
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/add.html`, {
       method: 'POST',
       headers,
-      body: new URLSearchParams({ type: typeMap[type] || type, name, platform: 'H5' }).toString()
+      body: new URLSearchParams({ type: typeMap[type] || type, name, platform: 'H5' }).toString(),
+      timeout: 10000
     });
     
     const result = await response.json();
@@ -314,27 +339,38 @@ export async function disconnectExternal() {
 }
 
 export async function getProducts() {
-  const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+  const startTime = Date.now();
+  try {
+    const cookieStore = await cookies();
+    const tenantId = cookieStore.get('connected_company')?.value || "default";
 
-  const dbProducts = await prisma.product.findMany({
-    where: { tenantId },
-    include: {
-      customFields: true,
-      yarnUsages: true,
-      samples: {
-        include: {
-          stages: {
-            include: { fields: true, attachments: true },
-            orderBy: { order: 'asc' }
-          },
-          logs: { orderBy: { time: 'desc' } }
+    console.log(`[getProducts] 开始查询, 租户=${tenantId}...`);
+    const dbProducts = await prisma.product.findMany({
+      where: { tenantId },
+      include: {
+        customFields: true,
+        yarnUsages: true,
+        samples: {
+          include: {
+            stages: {
+              include: { fields: true, attachments: true },
+              orderBy: { order: 'asc' }
+            },
+            logs: { orderBy: { time: 'desc' } }
+          }
         }
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  })
-  return dbProducts.map(mapProduct)
+      },
+      orderBy: { createdAt: 'desc' }
+    })
+    
+    const duration = Date.now() - startTime;
+    console.log(`[getProducts] 查询完成, 数量=${dbProducts.length}, 耗时=${duration}ms`);
+    
+    return dbProducts.map(mapProduct)
+  } catch (error) {
+    console.error("[getProducts] 查询失败:", error);
+    return [];
+  }
 }
 
 export async function getStageTemplates() {

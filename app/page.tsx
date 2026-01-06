@@ -53,12 +53,19 @@ export default function Dashboard() {
   // 初始化加载数据
   useEffect(() => {
     async function loadData() {
+      console.log("[Dashboard] 开始并行加载基础数据...");
+      const startTime = Date.now();
+      
       try {
+        // 1. 优先加载产品列表和基础配置
         const [productsData, templatesData, connInfo] = await Promise.all([
           getProducts(),
           getStageTemplates(),
           getConnectedInfo()
         ]);
+        
+        console.log(`[Dashboard] 基础数据加载完成, 耗时=${Date.now() - startTime}ms`);
+        
         setProducts(productsData);
         setTemplates(templatesData);
         setConnectedInfo(connInfo);
@@ -68,21 +75,27 @@ export default function Dashboard() {
           setActiveSampleId(productsData[0].samples[0].id);
         }
 
+        // 核心数据加载完就关闭全屏加载状态
         setLoading(false);
 
-        // 如果已连接，则加载初始化数据
+        // 2. 如果已连接，则在后台异步加载字典数据（不影响主界面操作）
         if (connInfo.isConnected) {
-          const initData = await getGoodsInitData();
-          if (initData) {
-            setColorDict(initData.colors);
-            setSizeDict(initData.sizes);
-            setMaterialDict(initData.materials);
-          }
+          console.log("[Dashboard] 正在后台拉取外部字典数据...");
+          getGoodsInitData().then(initData => {
+            if (initData) {
+              setColorDict(initData.colors);
+              setSizeDict(initData.sizes);
+              setMaterialDict(initData.materials);
+              console.log("[Dashboard] 外部字典数据加载成功");
+            }
+          }).catch(err => {
+            console.error("[Dashboard] 字典数据后台加载失败:", err);
+          });
         }
 
       } catch (error) {
-        console.error("Failed to load data:", error);
-        setLoading(false);
+        console.error("[Dashboard] 数据加载发生严重错误:", error);
+        setLoading(false); // 即使报错也要关闭加载状态，避免死锁
       }
     }
     loadData();

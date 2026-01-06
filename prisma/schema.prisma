@@ -43,6 +43,8 @@ model YarnUsage {
   materialType String? // 原料类型 (如毛料、辅料)
   product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId    String
+
+  @@index([productId])
 }
 
 model ProductCustomField {
@@ -51,6 +53,8 @@ model ProductCustomField {
   value     String  // 内容
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId String
+
+  @@index([productId])
 }
 
 model SampleVersion {
@@ -61,6 +65,8 @@ model SampleVersion {
   productId String
   stages    Stage[]
   logs      Log[]
+
+  @@index([productId])
 }
 
 model Stage {
@@ -73,6 +79,8 @@ model Stage {
   sampleId  String
   fields    StageField[]
   attachments Attachment[]
+
+  @@index([sampleId])
 }
 
 model StageField {
@@ -82,6 +90,8 @@ model StageField {
   type    String @default("text") // 参数类型
   stage   Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
   stageId String
+
+  @@index([stageId])
 }
 
 model Attachment {
@@ -92,6 +102,8 @@ model Attachment {
   createdAt DateTime @default(now())
   stage     Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
   stageId   String
+
+  @@index([stageId])
 }
 
 model StageTemplate {
@@ -113,4 +125,6 @@ model Log {
   time      DateTime      @default(now())
   sample    SampleVersion @relation(fields: [sampleId], references: [id], onDelete: Cascade)
   sampleId  String
+
+  @@index([sampleId])
 }
