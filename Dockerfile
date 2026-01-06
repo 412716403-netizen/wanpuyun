@@ -17,7 +17,7 @@
     COPY . .
     
     # 生成 Prisma Client 并构建应用
-    RUN npx prisma generate
+    RUN npx prisma@5.22.0 generate
     RUN npm run build
     
     # --- 阶段 3: 运行环境 ---
@@ -39,4 +39,4 @@
     ENV HOSTNAME="0.0.0.0"
     
     # 启动脚本：先运行数据库迁移，再启动应用
-    CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+    CMD ["sh", "-c", "npx prisma@5.22.0 migrate deploy && node server.js"]
