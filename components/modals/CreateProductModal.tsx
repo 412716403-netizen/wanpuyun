@@ -22,6 +22,10 @@ interface CreateProductModalProps {
   colorDict: { id: string, name: string }[];
   sizeDict: { id: string, name: string }[];
   materialDict: { id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[];
+  dictLoading?: { colors: boolean, sizes: boolean, materials: boolean };
+  onFetchColors?: () => void;
+  onFetchSizes?: () => void;
+  onFetchMaterials?: () => void;
   onAddDictItem: (type: string, name: string) => Promise<boolean>;
   onAddCustomField: () => void;
   onRemoveCustomField: (id: string) => void;
@@ -44,7 +48,8 @@ const SelectionModal = ({
   selectedIds, 
   onConfirm,
   onAdd,
-  placeholder = "搜索内容..."
+  placeholder = "搜索内容...",
+  isLoading = false
 }: { 
   isOpen: boolean, 
   onClose: () => void, 
@@ -53,7 +58,8 @@ const SelectionModal = ({
   selectedIds: string[], 
   onConfirm: (ids: string[]) => void,
   onAdd?: (name: string) => void,
-  placeholder?: string
+  placeholder?: string,
+  isLoading?: boolean
 }) => {
   const [search, setSearch] = useState("");
   const [tempSelectedIds, setTempSelectedIds] = useState<string[]>(selectedIds);
@@ -168,50 +174,57 @@ const SelectionModal = ({
           )}
 
           <div className="flex-1 overflow-y-auto no-scrollbar pr-1">
-            <div className="flex flex-col gap-2"> {/* 改为单列布局 */}
-              {filtered.length > 0 ? (
-                filtered.map(opt => {
-                  const isSel = tempSelectedIds.includes(opt.id);
-                  const isMaterial = opt.color !== undefined; // 简单判断是否为原料项
-                  
-                  return (
-                    <button
-                      key={opt.id}
-                      onClick={() => toggleItem(opt.id)}
-                      className={`flex items-center justify-between px-6 py-4 rounded-xl border transition-all text-left group ${isSel ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-300 text-slate-900 hover:border-indigo-500 hover:shadow-md'}`}
-                    >
-                      <div className="flex items-center gap-2 overflow-hidden flex-1">
-                        {isMaterial ? (
-                          <>
-                            {opt.type && (
-                              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black mr-2 ${isSel ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                                {opt.type}
+            {isLoading ? (
+              <div className="h-full flex flex-col items-center justify-center space-y-4">
+                <div className="w-10 h-10 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                <p className="text-xs font-bold text-slate-400 animate-pulse">正在从生产系统同步实时数据...</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2"> {/* 改为单列布局 */}
+                {filtered.length > 0 ? (
+                  filtered.map(opt => {
+                    const isSel = tempSelectedIds.includes(opt.id);
+                    const isMaterial = opt.color !== undefined; // 简单判断是否为原料项
+                    
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => toggleItem(opt.id)}
+                        className={`flex items-center justify-between px-6 py-4 rounded-xl border transition-all text-left group ${isSel ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-300 text-slate-900 hover:border-indigo-500 hover:shadow-md'}`}
+                      >
+                        <div className="flex items-center gap-2 overflow-hidden flex-1">
+                          {isMaterial ? (
+                            <>
+                              {opt.type && (
+                                <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black mr-2 ${isSel ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                                  {opt.type}
+                                </span>
+                              )}
+                              <span className={`shrink-0 font-black text-sm tracking-tight ${isSel ? 'text-indigo-100' : 'text-indigo-700'}`}>
+                                【{opt.color || '无色'}】
                               </span>
-                            )}
-                            <span className={`shrink-0 font-black text-sm tracking-tight ${isSel ? 'text-indigo-100' : 'text-indigo-700'}`}>
-                              【{opt.color || '无色'}】
-                            </span>
+                              <span className={`text-sm font-black truncate ${isSel ? 'text-white' : 'text-slate-900'}`}>{opt.name}</span>
+                              {opt.sub && (
+                                <span className={`ml-auto pl-4 text-xs shrink-0 font-black ${isSel ? 'text-white' : 'text-slate-700'}`}>
+                                  {opt.sub}
+                                </span>
+                              )}
+                            </>
+                          ) : (
                             <span className={`text-sm font-black truncate ${isSel ? 'text-white' : 'text-slate-900'}`}>{opt.name}</span>
-                            {opt.sub && (
-                              <span className={`ml-auto pl-4 text-xs shrink-0 font-black ${isSel ? 'text-white' : 'text-slate-700'}`}>
-                                {opt.sub}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <span className={`text-sm font-black truncate ${isSel ? 'text-white' : 'text-slate-900'}`}>{opt.name}</span>
-                        )}
-                      </div>
-                      {isSel && <Check className="w-5 h-5 flex-shrink-0 ml-4 animate-in zoom-in" />}
-                    </button>
-                  );
-                })
-              ) : (
-                <div className="py-12 text-center">
-                  <p className="text-sm text-slate-400 mb-3 font-medium">未找到结果</p>
-                </div>
-              )}
-            </div>
+                          )}
+                        </div>
+                        {isSel && <Check className="w-5 h-5 flex-shrink-0 ml-4 animate-in zoom-in" />}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="py-12 text-center">
+                    <p className="text-sm text-slate-400 mb-3 font-medium">未找到结果</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -241,6 +254,10 @@ export const CreateProductModal = ({
   colorDict,
   sizeDict,
   materialDict,
+  dictLoading,
+  onFetchColors,
+  onFetchSizes,
+  onFetchMaterials,
   onAddDictItem,
   onAddCustomField,
   onRemoveCustomField,
@@ -256,6 +273,13 @@ export const CreateProductModal = ({
 }: CreateProductModalProps) => {
   const [activeColorForYarn, setActiveColorForYarn] = useState<string | null>(null);
   const [selectionType, setSelectionType] = useState<'color' | 'size' | 'yarn' | null>(null);
+
+  // 当选择器打开时，按需加载对应的字典数据
+  React.useEffect(() => {
+    if (selectionType === 'color' && onFetchColors) onFetchColors();
+    if (selectionType === 'size' && onFetchSizes) onFetchSizes();
+    if (selectionType === 'yarn' && onFetchMaterials) onFetchMaterials();
+  }, [selectionType]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -601,6 +625,7 @@ export const CreateProductModal = ({
           onConfirm={confirmColors}
           onAdd={(name) => onAddDictItem('color', name)}
           placeholder="搜索颜色..."
+          isLoading={dictLoading?.colors}
         />
         <SelectionModal 
           isOpen={selectionType === 'size'}
@@ -611,6 +636,7 @@ export const CreateProductModal = ({
           onConfirm={confirmSizes}
           onAdd={(name) => onAddDictItem('size', name)}
           placeholder="搜索尺码..."
+          isLoading={dictLoading?.sizes}
         />
         <SelectionModal 
           isOpen={selectionType === 'yarn'}
@@ -629,7 +655,8 @@ export const CreateProductModal = ({
           })))}
           onConfirm={confirmYarnMaterials}
           onAdd={(name) => onAddDictItem('material', name)}
-          placeholder="搜索原料、规格或色号..."
+          placeholder="搜索原料、规格 or 色号..."
+          isLoading={dictLoading?.materials}
         />
       </div>
     </div>

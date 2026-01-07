@@ -19,7 +19,9 @@ import {
   createSampleVersion,
   deleteSampleVersion,
   deleteProduct,
-  getGoodsInitData,
+  getExternalColors,
+  getExternalSizes,
+  getExternalMaterials,
   syncProductToExternal,
   addDictItem,
   getConnectedInfo,
@@ -43,6 +45,7 @@ export default function Dashboard() {
   const [sizeDict, setSizeDict] = useState<{ id: string, name: string }[]>([]);
   const [materialDict, setMaterialDict] = useState<{ id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dictLoading, setDictLoading] = useState({ colors: false, sizes: false, materials: false });
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [activeSampleId, setActiveSampleId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"developing" | "archived">("developing");
@@ -78,21 +81,6 @@ export default function Dashboard() {
         // 核心数据加载完就关闭全屏加载状态
         setLoading(false);
 
-        // 2. 如果已连接，则在后台异步加载字典数据（不影响主界面操作）
-        if (connInfo.isConnected) {
-          console.log("[Dashboard] 正在后台拉取外部字典数据...");
-          getGoodsInitData().then(initData => {
-            if (initData) {
-              setColorDict(initData.colors);
-              setSizeDict(initData.sizes);
-              setMaterialDict(initData.materials);
-              console.log("[Dashboard] 外部字典数据加载成功");
-            }
-          }).catch(err => {
-            console.error("[Dashboard] 字典数据后台加载失败:", err);
-          });
-        }
-
       } catch (error) {
         console.error("[Dashboard] 数据加载发生严重错误:", error);
         setLoading(false); // 即使报错也要关闭加载状态，避免死锁
@@ -101,16 +89,49 @@ export default function Dashboard() {
     loadData();
   }, []);
 
-  const refreshDicts = async () => {
+  const loadColors = async () => {
+    if (!connectedInfo.isConnected || colorDict.length > 0 || dictLoading.colors) return;
+    setDictLoading(prev => ({ ...prev, colors: true }));
     try {
-      const data = await getGoodsInitData();
-      if (data) {
-        setColorDict(data.colors);
-        setSizeDict(data.sizes);
-        setMaterialDict(data.materials);
-      }
-    } catch (err) {
-      console.error("Failed to load init data:", err);
+      const data = await getExternalColors();
+      setColorDict(data);
+    } finally {
+      setDictLoading(prev => ({ ...prev, colors: false }));
+    }
+  };
+
+  const loadSizes = async () => {
+    if (!connectedInfo.isConnected || sizeDict.length > 0 || dictLoading.sizes) return;
+    setDictLoading(prev => ({ ...prev, sizes: true }));
+    try {
+      const data = await getExternalSizes();
+      setSizeDict(data);
+    } finally {
+      setDictLoading(prev => ({ ...prev, sizes: false }));
+    }
+  };
+
+  const loadMaterials = async () => {
+    if (!connectedInfo.isConnected || materialDict.length > 0 || dictLoading.materials) return;
+    setDictLoading(prev => ({ ...prev, materials: true }));
+    try {
+      const data = await getExternalMaterials();
+      setMaterialDict(data);
+    } finally {
+      setDictLoading(prev => ({ ...prev, materials: false }));
+    }
+  };
+
+  const refreshDicts = async () => {
+    // 强制刷新所有字典
+    setDictLoading({ colors: true, sizes: true, materials: true });
+    try {
+      const [c, s, m] = await Promise.all([getExternalColors(), getExternalSizes(), getExternalMaterials()]);
+      setColorDict(c);
+      setSizeDict(s);
+      setMaterialDict(m);
+    } finally {
+      setDictLoading({ colors: false, sizes: false, materials: false });
     }
   };
   
@@ -537,6 +558,10 @@ export default function Dashboard() {
           colorDict={colorDict}
           sizeDict={sizeDict}
           materialDict={materialDict}
+          dictLoading={dictLoading}
+          onFetchColors={loadColors}
+          onFetchSizes={loadSizes}
+          onFetchMaterials={loadMaterials}
           onAddDictItem={async (type, name) => {
             const ok = await addDictItem(type, name);
             if (ok) {

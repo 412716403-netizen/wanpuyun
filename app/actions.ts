@@ -116,46 +116,111 @@ export async function externalLogin(company: string, user: string, pass: string)
   }
 }
 
-// 获取商品录入所需的初始化数据（颜色、尺码、原料）
-export async function getGoodsInitData() {
-  if (!EXTERNAL_API_BASE_URL) return null;
+// 获取颜色字典 (Type: 3)
+export async function getExternalColors() {
+  if (!EXTERNAL_API_BASE_URL) return [];
   try {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get('external_session_cookie')?.value;
-    if (!sessionCookie) return null;
+    if (!sessionCookie) return [];
 
     const headers: Record<string, string> = { 
       'Content-Type': 'application/x-www-form-urlencoded',
       'Cookie': sessionCookie 
     };
 
-    console.log("[InitData] 开始从外部系统拉取字典数据...");
-    // 1. 获取颜色 (type=3) 和 尺码 (type=2)
-    const [cRes, sRes, mRes] = await Promise.all([
-      fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { method: 'POST', headers, body: 'type=3&platform=H5&limit=1000&pageSize=1000&per-page=1000', timeout: 10000 }),
-      fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { method: 'POST', headers, body: 'type=2&platform=H5&limit=1000&pageSize=1000&per-page=1000', timeout: 10000 }),
-      fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/list-data.html`, { method: 'POST', headers, body: 'platform=H5&limit=1000&pageSize=1000&per-page=1000', timeout: 10000 })
-    ]);
+    console.log("[InitData] 开始从外部系统拉取颜色字典...");
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { 
+      method: 'POST', 
+      headers, 
+      body: 'type=3&platform=H5&limit=1000&pageSize=1000&per-page=1000', 
+      timeout: 10000 
+    });
+    const result = await response.json();
+    const colors = (result.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
+    console.log(`[InitData] 颜色拉取完成: ${colors.length} 条`);
+    return colors;
+  } catch (error) {
+    console.error("[InitData] 颜色拉取异常:", error);
+    return [];
+  }
+}
 
-    const [cData, sData, mData] = await Promise.all([cRes.json(), sRes.json(), mRes.json()]);
+// 获取尺码字典 (Type: 2)
+export async function getExternalSizes() {
+  if (!EXTERNAL_API_BASE_URL) return [];
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+    if (!sessionCookie) return [];
 
-    const colors = (cData.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
-    const sizes = (sData.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
-    const materials = (mData.data || []).map((item: any) => ({
+    const headers: Record<string, string> = { 
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': sessionCookie 
+    };
+
+    console.log("[InitData] 开始从外部系统拉取尺码字典...");
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { 
+      method: 'POST', 
+      headers, 
+      body: 'type=2&platform=H5&limit=1000&pageSize=1000&per-page=1000', 
+      timeout: 10000 
+    });
+    const result = await response.json();
+    const sizes = (result.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
+    console.log(`[InitData] 尺码拉取完成: ${sizes.length} 条`);
+    return sizes;
+  } catch (error) {
+    console.error("[InitData] 尺码拉取异常:", error);
+    return [];
+  }
+}
+
+// 获取物料字典 (Materials)
+export async function getExternalMaterials() {
+  if (!EXTERNAL_API_BASE_URL) return [];
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+    if (!sessionCookie) return [];
+
+    const headers: Record<string, string> = { 
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': sessionCookie 
+    };
+
+    console.log("[InitData] 开始从外部系统拉取物料字典...");
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/list-data.html`, { 
+      method: 'POST', 
+      headers, 
+      body: 'platform=H5&limit=1000&pageSize=1000&per-page=1000', 
+      timeout: 10000 
+    });
+    const result = await response.json();
+    const materials = (result.data || []).map((item: any) => ({
       id: String(item.material_id),
       name: item.name,
       spec: item.spec || "",
       color: item.color || "",
       unit: (item.unit_name === '千克' || item.unit_name === 'kg') ? '克' : (item.unit_name || ""),
-      type: item.type?.replace(/<[^>]+>/g, '') || "" // 提取 "毛料" 或 "辅料"
+      type: item.type?.replace(/<[^>]+>/g, '') || "" 
     }));
-
-    console.log(`[InitData] 拉取完成: 颜色x${colors.length}, 尺码x${sizes.length}, 原料x${materials.length}`);
-    return { colors, sizes, materials };
-  } catch (error) { 
-    console.error("[InitData] 严重异常或超时:", error);
-    return null; 
+    console.log(`[InitData] 物料拉取完成: ${materials.length} 条`);
+    return materials;
+  } catch (error) {
+    console.error("[InitData] 物料拉取异常:", error);
+    return [];
   }
+}
+
+// 保持原函数名以兼容旧代码，但改为调用上面的具体函数
+export async function getGoodsInitData() {
+  const [colors, sizes, materials] = await Promise.all([
+    getExternalColors(),
+    getExternalSizes(),
+    getExternalMaterials()
+  ]);
+  return { colors, sizes, materials };
 }
 
 export async function syncProductToExternal(productId: string) {
