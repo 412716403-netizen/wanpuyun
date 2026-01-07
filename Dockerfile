@@ -20,12 +20,15 @@
     RUN npx prisma@5.22.0 generate
     RUN npm run build
     
-    # --- 阶段 3: 运行环境 ---
-    FROM node:20-slim AS runner
-    WORKDIR /app
-    
-    ENV NODE_ENV=production
-    
+# --- 阶段 3: 运行环境 ---
+FROM node:20-slim AS runner
+WORKDIR /app
+
+# 关键修复：在运行阶段也安装 openssl 库
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+ENV NODE_ENV=production
+
     # 复制必要文件
     COPY --from=builder /app/public ./public
     COPY --from=builder /app/.next/standalone ./
