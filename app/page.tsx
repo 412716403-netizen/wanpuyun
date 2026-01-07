@@ -9,6 +9,7 @@ import { LogModal } from "@/components/modals/LogModal";
 import { ConnectModal } from "@/components/modals/ConnectModal";
 import { 
   getProducts, 
+  getProductDetail,
   createProduct, 
   toggleProductStatus, 
   toggleSyncStatus, 
@@ -45,6 +46,7 @@ export default function Dashboard() {
   const [sizeDict, setSizeDict] = useState<{ id: string, name: string }[]>([]);
   const [materialDict, setMaterialDict] = useState<{ id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [dictLoading, setDictLoading] = useState({ colors: false, sizes: false, materials: false });
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [activeSampleId, setActiveSampleId] = useState<string>("");
@@ -74,8 +76,16 @@ export default function Dashboard() {
         setConnectedInfo(connInfo);
         
         if (productsData.length > 0) {
-          setSelectedProductId(productsData[0].id);
+          const firstId = productsData[0].id;
+          setSelectedProductId(firstId);
           setActiveSampleId(productsData[0].samples[0].id);
+          
+          // 首页加载后，静默拉取第一个产品的详情（包含附件）
+          getProductDetail(firstId).then(fullProduct => {
+            if (fullProduct) {
+              setProducts(prev => prev.map(p => p.id === firstId ? fullProduct : p));
+            }
+          });
         }
 
         // 核心数据加载完就关闭全屏加载状态
@@ -196,6 +206,15 @@ export default function Dashboard() {
       ]);
       setProducts(productsData);
       setTemplates(templatesData);
+      
+      // 如果当前有选中的产品，刷新它的详情
+      if (selectedProductId) {
+        const fullProduct = await getProductDetail(selectedProductId);
+        if (fullProduct) {
+          setProducts(prev => prev.map(p => p.id === selectedProductId ? fullProduct : p));
+        }
+      }
+
       if (connectedInfo.isConnected) {
         refreshDicts();
       }
@@ -205,10 +224,26 @@ export default function Dashboard() {
   };
 
   // --- Handlers ---
-  const handleSelectProduct = (id: string) => {
+  const handleSelectProduct = async (id: string) => {
     setSelectedProductId(id);
     const product = products.find(p => p.id === id);
-    if (product) setActiveSampleId(product.samples[0].id);
+    if (product) {
+      setActiveSampleId(product.samples[0].id);
+      
+      // 检查是否已经加载了完整详情（简单通过标记或判断是否有附件数据）
+      const hasFullData = product.samples.some(s => s.stages.some(st => st.attachments.some(a => a.fileUrl)));
+      if (!hasFullData) {
+        setDetailLoading(true);
+        try {
+          const fullProduct = await getProductDetail(id);
+          if (fullProduct) {
+            setProducts(prev => prev.map(p => p.id === id ? fullProduct : p));
+          }
+        } finally {
+          setDetailLoading(false);
+        }
+      }
+    }
   };
 
   const handleConnect = async (company: string, user: string, pass: string) => {
@@ -468,6 +503,7 @@ export default function Dashboard() {
           setActiveSampleId={setActiveSampleId}
           onEditProduct={handleEditProduct}
           onDeleteProduct={handleDeleteProduct}
+          isDetailLoading={detailLoading}
           onSync={async (id) => {
             if (isSubmitting) return;
             setIsSubmitting(true);

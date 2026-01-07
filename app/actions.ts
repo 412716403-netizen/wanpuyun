@@ -403,22 +403,38 @@ export async function disconnectExternal() {
   revalidatePath('/');
 }
 
+// 获取所有款式列表 (瘦身版：不包含阶段附件的 Base64 数据)
 export async function getProducts() {
   const startTime = Date.now();
   try {
     const cookieStore = await cookies();
     const tenantId = cookieStore.get('connected_company')?.value || "default";
 
-    console.log(`[getProducts] 开始查询, 租户=${tenantId}...`);
+    console.log(`[getProducts] 开始轻量化查询, 租户=${tenantId}...`);
     const dbProducts = await prisma.product.findMany({
       where: { tenantId },
-      include: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        tenantId: true,
+        colorsJson: true,
+        sizesJson: true,
+        status: true,
+        isSynced: true,
+        image: true, // 主图保留，因为侧边栏列表需要显示小图
+        createdAt: true,
         customFields: true,
         yarnUsages: true,
         samples: {
           include: {
             stages: {
-              include: { fields: true, attachments: true },
+              include: { 
+                fields: true, 
+                attachments: {
+                  select: { id: true, fileName: true, fileType: true, createdAt: true, stageId: true } // 不选附件的 fileUrl
+                } 
+              },
               orderBy: { order: 'asc' }
             },
             logs: { orderBy: { time: 'desc' } }
@@ -435,6 +451,32 @@ export async function getProducts() {
   } catch (error) {
     console.error("[getProducts] 查询失败:", error);
     return [];
+  }
+}
+
+// 获取单个款式的完整详情 (包含附件的 Base64 数据)
+export async function getProductDetail(productId: string) {
+  try {
+    const dbProduct = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        customFields: true,
+        yarnUsages: true,
+        samples: {
+          include: {
+            stages: {
+              include: { fields: true, attachments: true },
+              orderBy: { order: 'asc' }
+            },
+            logs: { orderBy: { time: 'desc' } }
+          }
+        }
+      }
+    });
+    return dbProduct ? mapProduct(dbProduct) : null;
+  } catch (error) {
+    console.error("[getProductDetail] 失败:", error);
+    return null;
   }
 }
 

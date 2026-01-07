@@ -15,6 +15,7 @@ interface MainContentProps {
   onLogOpen: () => void;
   onAddSample: () => void;
   onDeleteSample: (sampleId: string) => void;
+  isDetailLoading?: boolean;
 }
 
 export const MainContent = ({
@@ -29,14 +30,21 @@ export const MainContent = ({
     onNodeRegister,
     onLogOpen,
   onAddSample,
-  onDeleteSample
+  onDeleteSample,
+  isDetailLoading = false
 }: MainContentProps) => {
   const canDelete = selectedProduct.samples.every(s => 
     s.stages.every(st => st.status === 'pending')
   );
 
   return (
-    <main className="flex-1 flex flex-col bg-white overflow-y-auto no-scrollbar">
+    <main className="flex-1 flex flex-col bg-white overflow-y-auto no-scrollbar relative">
+      {isDetailLoading && (
+        <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-[100] flex flex-col items-center justify-center">
+          <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
+          <p className="text-xs font-bold text-slate-400 animate-pulse tracking-widest uppercase">正在获取高清附件与详情...</p>
+        </div>
+      )}
       {/* Header Section */}
       <div className="p-10 flex gap-10 border-b border-slate-100">
         <div className="w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0 flex items-center justify-center">
