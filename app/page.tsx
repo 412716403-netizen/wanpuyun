@@ -89,7 +89,7 @@ export default function Dashboard() {
           // 首页加载后，静默拉取第一个产品的详情（包含附件）
           getProductDetail(firstProduct.id).then(fullProduct => {
             if (fullProduct) {
-              setProducts(prev => prev.map(p => p.id === firstId ? fullProduct : p));
+              setProducts(prev => prev.map(p => p.id === firstProduct.id ? fullProduct : p));
             }
           });
         }
