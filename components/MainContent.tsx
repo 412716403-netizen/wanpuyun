@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit3, CheckCircle2, Clock, RefreshCw, History, Plus, Layers, FileText, X, Download, FileArchive, ImageIcon, Trash2, Tag, Ruler } from "lucide-react";
+import { Edit3, CheckCircle2, Clock, RefreshCw, History, Plus, Layers, FileText, X, Download, FileArchive, Image as ImageIcon, Trash2, Tag, Ruler } from "lucide-react";
 import { Product, SampleVersion } from "@/types";
 
 interface MainContentProps {
@@ -177,7 +177,7 @@ export const MainContent = ({
 
         <div className="space-y-6 max-w-4xl relative">
           <div className="absolute left-6 top-6 bottom-6 w-[2px] bg-slate-100"></div>
-          {currentSample.stages.map((stage, idx) => (
+          {currentSample?.stages?.map((stage, idx) => (
             <div key={stage.id} className="relative pl-16">
               <div className={`absolute left-0 top-6 w-12 h-12 rounded-full border-4 border-white shadow-md flex items-center justify-center text-sm font-bold z-10 ${stage.status === 'completed' ? 'bg-emerald-500 text-white' : stage.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-slate-300 text-white'}`}>
                 {stage.status === 'completed' ? <CheckCircle2 className="w-6 h-6" /> : idx + 1}

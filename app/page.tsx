@@ -80,12 +80,14 @@ export default function Dashboard() {
         setConnectedInfo(connInfo);
         
         if (productsData.length > 0) {
-          const firstId = productsData[0].id;
-          setSelectedProductId(firstId);
-          setActiveSampleId(productsData[0].samples[0].id);
+          const firstProduct = productsData[0];
+          setSelectedProductId(firstProduct.id);
+          if (firstProduct.samples && firstProduct.samples.length > 0) {
+            setActiveSampleId(firstProduct.samples[0].id);
+          }
           
           // 首页加载后，静默拉取第一个产品的详情（包含附件）
-          getProductDetail(firstId).then(fullProduct => {
+          getProductDetail(firstProduct.id).then(fullProduct => {
             if (fullProduct) {
               setProducts(prev => prev.map(p => p.id === firstId ? fullProduct : p));
             }

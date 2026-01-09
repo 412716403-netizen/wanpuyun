@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Filter, ImageIcon, X, Link, Link2Off } from "lucide-react";
+import { Plus, Search, Filter, Image as ImageIcon, X, Link, Link2Off } from "lucide-react";
 import { Product } from "@/types";
 
 interface ProductSidebarProps {
