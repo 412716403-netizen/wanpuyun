@@ -350,7 +350,7 @@ export default function Dashboard() {
       }
       setIsCreateModalOpen(false);
       setIsEditMode(false);
-      setNewProduct({ code: "", name: "", image: "", colors: [], sizes: [], yarnUsage: [], customFields: [] });
+      setNewProduct({ code: "", name: "", image: "", thumbnail: "", colors: [], sizes: [], yarnUsage: [], customFields: [] });
       setNewProductFieldInput({ label: "", value: "" }); 
       setNewProductStages([]);
     } catch (error: any) {

@@ -12,5 +12,5 @@ services:
       # 确保宿主机目录下已存在 dev.db 文件或由 docker 自动创建
       - ./prisma/dev.db:/app/prisma/dev.db
     environment:
-      - DATABASE_URL=file:./dev.db
+      - DATABASE_URL=file:./prisma/dev.db
       - NODE_ENV=production
