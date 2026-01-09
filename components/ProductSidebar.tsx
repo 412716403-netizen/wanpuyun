@@ -17,7 +17,7 @@ interface ProductSidebarProps {
   filters: any;
   setFilters: (f: any) => void;
   uniqueStageNames: string[];
-  connectedInfo: { isConnected: boolean, company: string };
+  connectedInfo: { isConnected: boolean, company: string, userName?: string };
   onConnectOpen: () => void;
   onDisconnect: () => void;
 }
@@ -47,11 +47,14 @@ export const ProductSidebar = ({
       <div className="flex items-center gap-2 mb-2">
         {connectedInfo.isConnected ? (
           <div className="flex-1 flex items-center justify-between bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 group">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-bold text-emerald-700 truncate max-w-[120px]">{connectedInfo.company}</span>
+            <div className="flex items-center gap-2 overflow-hidden">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse flex-shrink-0" />
+              <div className="flex flex-col min-w-0">
+                <span className="text-[10px] font-black text-emerald-700 truncate">{connectedInfo.company}</span>
+                {connectedInfo.userName && <span className="text-[8px] font-bold text-emerald-500 truncate -mt-0.5 opacity-70">经办人: {connectedInfo.userName}</span>}
+              </div>
             </div>
-            <button onClick={onDisconnect} className="p-1.5 hover:bg-white rounded-lg text-emerald-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100" title="断开连接">
+            <button onClick={onDisconnect} className="p-1.5 hover:bg-white rounded-lg text-emerald-400 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100 flex-shrink-0" title="断开连接">
               <Link2Off className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -158,8 +161,8 @@ export const ProductSidebar = ({
 
             <div className="flex gap-4">
               <div className="w-16 h-16 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center">
-                {product.image && product.image.startsWith('data:') ? (
-                  <img src={product.image} className="w-full h-full object-cover" />
+                {(product.thumbnail || product.image) && (product.thumbnail?.startsWith('data:') || product.image?.startsWith('data:')) ? (
+                  <img src={product.thumbnail || product.image} className="w-full h-full object-cover" />
                 ) : (
                   <ImageIcon className="w-6 h-6 text-slate-300" />
                 )}
@@ -186,9 +189,6 @@ export const ProductSidebar = ({
                   })}
                 </div>
               </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-slate-100 flex gap-4 text-[10px] text-slate-400 font-medium overflow-hidden">
-              {product.customFields.slice(0, 3).map(cf => <span key={cf.id} className="truncate max-w-[80px]">{cf.value}</span>)}
             </div>
           </div>
         );

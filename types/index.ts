@@ -56,6 +56,7 @@ export interface Product {
   isSynced: boolean;
   createdAt: string;
   image?: string;
+  thumbnail?: string;
   samples: SampleVersion[];
 }
 

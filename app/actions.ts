@@ -26,6 +26,7 @@ function mapProduct(dbProduct: any): Product {
     status: dbProduct.status as "developing" | "archived",
     isSynced: dbProduct.isSynced,
     image: dbProduct.image || "",
+    thumbnail: dbProduct.thumbnail || "",
     createdAt: dbProduct.createdAt.toISOString().split('T')[0],
     customFields: dbProduct.customFields.map((cf: any) => ({
       id: cf.id,
@@ -97,16 +98,36 @@ export async function externalLogin(company: string, user: string, pass: string)
     
     if (result.error === 0) {
       const cookieStore = await cookies();
+      let sessionCookie = "";
       if (setCookieHeader) {
         const valid_cookies = setCookieHeader.split(/,(?=\s*[^,;]+=[^,;]+)/).map(c => c.trim().split(';')[0]).filter(c => !c.includes('=deleted'));
         if (valid_cookies.length > 0) {
-          const cookie_string = valid_cookies.join('; ');
-          cookieStore.set('external_session_cookie', cookie_string, { path: '/', maxAge: 60 * 60 * 24 * 7 });
-          const match = cookie_string.match(/advanced-frontend-fact=([^;]+)/);
+          sessionCookie = valid_cookies.join('; ');
+          cookieStore.set('external_session_cookie', sessionCookie, { path: '/', maxAge: 60 * 60 * 24 * 7 });
+          const match = sessionCookie.match(/advanced-frontend-fact=([^;]+)/);
           if (match) cookieStore.set('external_token', match[1], { path: '/', maxAge: 60 * 60 * 24 * 7 });
         }
       }
       cookieStore.set('connected_company', company, { path: '/', maxAge: 60 * 60 * 24 * 7 });
+
+      // 尝试获取经办人姓名
+      try {
+        console.log("[Login] 正在尝试获取经办人姓名...");
+        const homeRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact.html`, {
+          headers: { 'Cookie': sessionCookie },
+          timeout: 5000
+        });
+        const html = await homeRes.text();
+        // 匹配 <cite>...管理员 </cite> 结构，支持图片头像和空白字符
+        const citeMatch = html.match(/<cite>[\s\S]*?<\/img>\s*([\s\S]*?)\s*<\/cite>/);
+        const realName = citeMatch ? citeMatch[1].trim() : user;
+        console.log(`[Login] 成功获取经办人: ${realName}`);
+        cookieStore.set('connected_user_name', realName, { path: '/', maxAge: 60 * 60 * 24 * 7 });
+      } catch (nameError) {
+        console.error("[Login] 获取经办人姓名失败:", nameError);
+        cookieStore.set('connected_user_name', user, { path: '/', maxAge: 60 * 60 * 24 * 7 });
+      }
+
       return { success: true, message: "连接成功" };
     }
     return { success: false, message: result.message || "登录失败" };
@@ -356,6 +377,89 @@ export async function syncProductToExternal(productId: string) {
   }
 }
 
+// 获取单位字典
+export async function getExternalUnits() {
+  if (!EXTERNAL_API_BASE_URL) return [];
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+    if (!sessionCookie) return [];
+
+    console.log("[InitData] 开始从 HTML 提取单位字典...");
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/add.html?platform=H5`, {
+      method: 'GET',
+      headers: { 'Cookie': sessionCookie },
+      timeout: 10000
+    });
+    const html = await response.text();
+    
+    const unitMatch = html.match(/<select name="unit_id"[\s\S]*?<\/select>/);
+    const units: { id: string, name: string }[] = [];
+    
+    if (unitMatch) {
+      const options = unitMatch[0].match(/<option value="(\d+)".*?>([\s\S]*?)<\/option>/g);
+      options?.forEach(opt => {
+        const m = opt.match(/value="(\d+)".*?>([\s\S]*?)<\/option>/);
+        if (m && m[1] !== '0') { // 排除“请选择”之类的空项
+          units.push({ id: m[1], name: m[2].trim() });
+        }
+      });
+    }
+    console.log(`[InitData] 单位拉取完成: ${units.length} 条`);
+    return units;
+  } catch (error) {
+    console.error("[InitData] 单位拉取异常:", error);
+    return [];
+  }
+}
+
+// 新增物料 (原料)
+export async function addMaterial(params: {
+  type: '1' | '2', // 1: 毛料, 2: 辅料
+  name: string,
+  color: string,
+  spec: string,
+  unit_id?: string
+}) {
+  if (!EXTERNAL_API_BASE_URL) return { success: false, message: "请配置域名" };
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+    if (!sessionCookie) return { success: false, message: "请先连接生产系统" };
+
+    const bodyParams = new URLSearchParams({
+      platform: 'H5',
+      type: params.type,
+      name: params.name,
+      color: params.color,
+      spec: params.spec,
+      unit_id: params.unit_id || '0'
+    });
+
+    console.log(`[MaterialAdd] 开始创建原料: 名称=${params.name}, 类型=${params.type}`);
+
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/add.html`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': sessionCookie
+      },
+      body: bodyParams.toString(),
+      timeout: 10000
+    });
+    
+    const result = await response.json();
+    if (result.error === 0) {
+      return { success: true, message: "增加成功" };
+    } else {
+      return { success: false, message: result.message || "增加失败" };
+    }
+  } catch (error) { 
+    console.error("[MaterialAdd] 发生异常:", error);
+    return { success: false, message: "系统连接异常" }; 
+  }
+}
+
 export async function addDictItem(type: string, name: string) {
   if (!EXTERNAL_API_BASE_URL) return false;
   try {
@@ -392,7 +496,8 @@ export async function getConnectedInfo() {
   const cookieStore = await cookies();
   const company = cookieStore.get('connected_company')?.value;
   const token = cookieStore.get('external_token')?.value;
-  return { isConnected: !!token, company: company || "" };
+  const userName = cookieStore.get('connected_user_name')?.value;
+  return { isConnected: !!token, company: company || "", userName: userName || "" };
 }
 
 export async function disconnectExternal() {
@@ -400,15 +505,23 @@ export async function disconnectExternal() {
   cookieStore.delete('external_token');
   cookieStore.delete('external_session_cookie');
   cookieStore.delete('connected_company');
+  cookieStore.delete('connected_user_name');
   revalidatePath('/');
 }
 
 // 获取所有款式列表 (瘦身版：不包含阶段附件的 Base64 数据)
 export async function getProducts() {
   const startTime = Date.now();
+  console.log("[getProducts] 正在刷新列表..."); 
   try {
     const cookieStore = await cookies();
-    const tenantId = cookieStore.get('connected_company')?.value || "default";
+    const token = cookieStore.get('external_token')?.value;
+    const tenantId = cookieStore.get('connected_company')?.value;
+
+    if (!token || !tenantId) {
+      console.log("[getProducts] 未连接，不返回任何数据");
+      return [];
+    }
 
     console.log(`[getProducts] 开始轻量化查询, 租户=${tenantId}...`);
     const dbProducts = await prisma.product.findMany({
@@ -422,7 +535,7 @@ export async function getProducts() {
         sizesJson: true,
         status: true,
         isSynced: true,
-        image: true, // 主图保留，因为侧边栏列表需要显示小图
+        thumbnail: true, // 仅保留缩略图，侧边栏列表显示使用
         createdAt: true,
         customFields: true,
         yarnUsages: true,
@@ -482,7 +595,11 @@ export async function getProductDetail(productId: string) {
 
 export async function getStageTemplates() {
   const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+  const token = cookieStore.get('external_token')?.value;
+  const tenantId = cookieStore.get('connected_company')?.value;
+  
+  if (!token || !tenantId) return [];
+  
   return await prisma.stageTemplate.findMany({ 
     where: { tenantId },
     orderBy: { order: 'asc' } 
@@ -498,6 +615,21 @@ export async function deleteStageTemplate(id: string) {
   revalidatePath('/')
 }
 
+export async function updateStageTemplateOrder(items: { id: string, order: number }[]) {
+  const cookieStore = await cookies();
+  const tenantId = cookieStore.get('connected_company')?.value || "default";
+  
+  // 使用 transaction 批量更新
+  await prisma.$transaction(
+    items.map(item => prisma.stageTemplate.update({
+      where: { id_tenantId: { id: item.id, tenantId } },
+      data: { order: item.order }
+    }))
+  );
+  
+  revalidatePath('/')
+}
+
 export async function createProduct(data: {
   code: string,
   name: string,
@@ -505,11 +637,30 @@ export async function createProduct(data: {
   sizes: string[],
   yarnUsage: { color: string, materialName: string, specification?: string, weight?: string, unit?: string, materialColor?: string, materialType?: string }[],
   image?: string,
+  thumbnail?: string,
   customFields: { label: string, value: string }[],
   stages: string[]
 }) {
   const cookieStore = await cookies();
   const tenantId = cookieStore.get('connected_company')?.value || "default";
+
+  // 检查款号或品名是否重复
+  const existing = await prisma.product.findFirst({
+    where: {
+      tenantId,
+      OR: [
+        { code: data.code },
+        { name: data.name }
+      ]
+    }
+  });
+
+  if (existing) {
+    if (existing.code === data.code) {
+      return { success: false, message: `款号 "${data.code}" 已存在` };
+    }
+    return { success: false, message: `品名 "${data.name}" 已存在` };
+  }
 
   for (const name of data.stages) {
     await prisma.stageTemplate.upsert({
@@ -528,6 +679,7 @@ export async function createProduct(data: {
       colorsJson: JSON.stringify(data.colors),
       sizesJson: JSON.stringify(data.sizes),
       image: data.image,
+      thumbnail: data.thumbnail,
       customFields: {
         create: data.customFields.map(f => ({ label: f.label, value: f.value }))
       },
@@ -549,7 +701,7 @@ export async function createProduct(data: {
             create: data.stages.map((name, index) => ({
               name,
               order: index,
-              status: 'pending'
+              status: index === 0 ? 'in_progress' : 'pending'
             }))
           }
         }]
@@ -557,7 +709,7 @@ export async function createProduct(data: {
     }
   })
   revalidatePath('/')
-  return product.id
+  return { success: true, id: product.id };
 }
 
 export async function updateProduct(id: string, data: {
@@ -567,10 +719,30 @@ export async function updateProduct(id: string, data: {
   sizes: string[],
   yarnUsage: { color: string, materialName: string, specification?: string, weight?: string, unit?: string, materialColor?: string, materialType?: string }[],
   image?: string,
+  thumbnail?: string,
   customFields: { label: string, value: string }[]
 }) {
   const cookieStore = await cookies();
   const tenantId = cookieStore.get('connected_company')?.value || "default";
+
+  // 检查款号或品名是否与其他款式重复
+  const existing = await prisma.product.findFirst({
+    where: {
+      tenantId,
+      id: { not: id },
+      OR: [
+        { code: data.code },
+        { name: data.name }
+      ]
+    }
+  });
+
+  if (existing) {
+    if (existing.code === data.code) {
+      return { success: false, message: `款号 "${data.code}" 已被其他款式占用` };
+    }
+    return { success: false, message: `品名 "${data.name}" 已被其他款式占用` };
+  }
 
   await prisma.product.update({
     where: { id_tenantId: { id, tenantId } },
@@ -580,6 +752,7 @@ export async function updateProduct(id: string, data: {
       colorsJson: JSON.stringify(data.colors),
       sizesJson: JSON.stringify(data.sizes),
       image: data.image,
+      thumbnail: data.thumbnail,
       customFields: {
         deleteMany: {},
         create: data.customFields.map(f => ({ label: f.label, value: f.value }))
@@ -612,18 +785,21 @@ export async function createSampleVersion(productId: string, name: string) {
       name,
       productId,
       stages: {
-        create: lastSample?.stages.map(st => ({
+        create: lastSample?.stages.map((st, index) => ({
           name: st.name,
           order: st.order,
-          status: 'pending'
+          status: index === 0 ? 'in_progress' : 'pending'
         })) || []
       }
     }
   })
+  const cookieStore = await cookies();
+  const userName = cookieStore.get('connected_user_name')?.value || '未知用户';
+
   await prisma.log.create({
     data: {
       sampleId: newSample.id,
-      user: 'Jun Zheng',
+      user: userName,
       action: '创建新轮次',
       detail: `从 ${lastSample?.name || '初始模板'} 派生新轮次: ${name}`
     }
@@ -672,9 +848,12 @@ export async function updateStageInfo(params: {
   fields: { label: string, value: string, type: string }[],
   attachments: { fileName: string, fileUrl: string }[],
   sampleId: string,
-  userName: string,
+  userName: string, // 保留参数名以兼容前端调用，但内部改用 Cookie
   logDetail: string
 }) {
+  const cookieStore = await cookies();
+  const realUserName = cookieStore.get('connected_user_name')?.value || params.userName || '未知用户';
+
   const updatedStage = await prisma.stage.update({
     where: { id: params.stageId },
     data: {
@@ -699,7 +878,7 @@ export async function updateStageInfo(params: {
     }
   }
   await prisma.log.create({
-    data: { sampleId: params.sampleId, user: params.userName, action: '更新状态/参数', detail: params.logDetail }
+    data: { sampleId: params.sampleId, user: realUserName, action: '更新状态/参数', detail: params.logDetail }
   })
   revalidatePath('/')
 }

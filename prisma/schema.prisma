@@ -21,7 +21,8 @@ model Product {
   sizesJson    String               @default("[]") // 已选尺码池 (JSON)
   status       String               @default("developing") // developing | archived
   isSynced     Boolean              @default(false)        // 大货同步状态
-  image        String?              // 款式图片
+  image        String?              // 款式图片 (高清)
+  thumbnail    String?              // 款式图片 (缩略图)
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
   customFields ProductCustomField[]

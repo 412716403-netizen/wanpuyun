@@ -33,12 +33,36 @@ export const MainContent = ({
   onDeleteSample,
   isDetailLoading = false
 }: MainContentProps) => {
+  const [showFullImage, setShowFullImage] = React.useState(false);
   const canDelete = selectedProduct.samples.every(s => 
-    s.stages.every(st => st.status === 'pending')
+    s.stages.every((st, idx) => {
+      if (idx === 0) return st.status === 'pending' || st.status === 'in_progress';
+      return st.status === 'pending';
+    })
   );
 
   return (
     <main className="flex-1 flex flex-col bg-white overflow-y-auto no-scrollbar relative">
+      {/* 全屏原图查看器 */}
+      {showFullImage && selectedProduct.image && (
+        <div 
+          className="fixed inset-0 z-[500] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-10 animate-in fade-in duration-200"
+          onClick={() => setShowFullImage(false)}
+        >
+          <button 
+            className="absolute top-10 right-10 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"
+            onClick={() => setShowFullImage(false)}
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <img 
+            src={selectedProduct.image} 
+            className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300" 
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
       {isDetailLoading && (
         <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] z-[100] flex flex-col items-center justify-center">
           <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
@@ -47,7 +71,10 @@ export const MainContent = ({
       )}
       {/* Header Section */}
       <div className="p-10 flex gap-10 border-b border-slate-100">
-        <div className="w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0 flex items-center justify-center">
+        <div 
+          onClick={() => selectedProduct.image && setShowFullImage(true)}
+          className={`w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0 flex items-center justify-center transition-all ${selectedProduct.image ? 'cursor-zoom-in hover:scale-[1.02] active:scale-[0.98]' : ''}`}
+        >
           {selectedProduct.image && selectedProduct.image.startsWith('data:') ? (
             <img src={selectedProduct.image} className="w-full h-full object-cover" />
           ) : (
@@ -56,7 +83,7 @@ export const MainContent = ({
               <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">No Image</span>
             </div>
           )}
-          <div className="absolute top-4 right-4 flex gap-2">
+          <div className="absolute top-4 right-4 flex gap-2" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => onEditProduct(selectedProduct)} className="p-2 bg-white/90 backdrop-blur rounded-lg shadow-sm text-slate-600 hover:text-indigo-600" title="编辑款式"><Edit3 className="w-4 h-4" /></button>
             {canDelete && (
               <button 
@@ -111,7 +138,7 @@ export const MainContent = ({
                 )) : <span className="text-[10px] text-slate-300 italic">未设置</span>}
               </div>
             </div>
-            {selectedProduct.customFields.map(cf => (
+            {selectedProduct.customFields.filter(cf => cf.value && cf.value.trim() !== "").map(cf => (
               <div key={cf.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 truncate">{cf.label}</div>
                 <div className="text-sm font-bold text-slate-900 truncate">{cf.value}</div>

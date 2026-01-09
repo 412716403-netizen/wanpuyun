@@ -17,6 +17,7 @@ import {
   updateProduct,
   getStageTemplates,
   deleteStageTemplate,
+  updateStageTemplateOrder,
   createSampleVersion,
   deleteSampleVersion,
   deleteProduct,
@@ -27,9 +28,11 @@ import {
   addDictItem,
   getConnectedInfo,
   externalLogin,
-  disconnectExternal
+  disconnectExternal,
+  getExternalUnits,
+  addMaterial
 } from "./actions";
-import { Plus } from "lucide-react";
+import { Plus, Link as LinkIcon, ShieldCheck } from "lucide-react";
 import { 
   Product, 
   Stage, 
@@ -45,15 +48,16 @@ export default function Dashboard() {
   const [colorDict, setColorDict] = useState<{ id: string, name: string }[]>([]);
   const [sizeDict, setSizeDict] = useState<{ id: string, name: string }[]>([]);
   const [materialDict, setMaterialDict] = useState<{ id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[]>([]);
+  const [unitDict, setUnitDict] = useState<{ id: string, name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [dictLoading, setDictLoading] = useState({ colors: false, sizes: false, materials: false });
+  const [dictLoading, setDictLoading] = useState({ colors: false, sizes: false, materials: false, units: false });
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [activeSampleId, setActiveSampleId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"developing" | "archived">("developing");
   const [searchQuery, setSearchQuery] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [connectedInfo, setConnectedInfo] = useState({ isConnected: false, company: "" });
+  const [connectedInfo, setConnectedInfo] = useState({ isConnected: false, company: "", userName: "" });
 
   // 初始化加载数据
   useEffect(() => {
@@ -132,16 +136,33 @@ export default function Dashboard() {
     }
   };
 
+  const loadUnits = async () => {
+    if (!connectedInfo.isConnected || unitDict.length > 0 || dictLoading.units) return;
+    setDictLoading(prev => ({ ...prev, units: true }));
+    try {
+      const data = await getExternalUnits();
+      setUnitDict(data);
+    } finally {
+      setDictLoading(prev => ({ ...prev, units: false }));
+    }
+  };
+
   const refreshDicts = async () => {
     // 强制刷新所有字典
-    setDictLoading({ colors: true, sizes: true, materials: true });
+    setDictLoading({ colors: true, sizes: true, materials: true, units: true });
     try {
-      const [c, s, m] = await Promise.all([getExternalColors(), getExternalSizes(), getExternalMaterials()]);
+      const [c, s, m, u] = await Promise.all([
+        getExternalColors(), 
+        getExternalSizes(), 
+        getExternalMaterials(),
+        getExternalUnits()
+      ]);
       setColorDict(c);
       setSizeDict(s);
       setMaterialDict(m);
+      setUnitDict(u);
     } finally {
-      setDictLoading({ colors: false, sizes: false, materials: false });
+      setDictLoading({ colors: false, sizes: false, materials: false, units: false });
     }
   };
   
@@ -166,6 +187,7 @@ export default function Dashboard() {
     code: "", 
     name: "", 
     image: "", 
+    thumbnail: "",
     colors: [] as string[],
     sizes: [] as string[],
     yarnUsage: [] as YarnUsage[],
@@ -257,15 +279,23 @@ export default function Dashboard() {
   const handleDisconnect = async () => {
     if (confirm("确定要断开与生产系统的连接吗？")) {
       await disconnectExternal();
-      setConnectedInfo({ isConnected: false, company: "" });
+      setConnectedInfo({ isConnected: false, company: "", userName: "" });
       setColorDict([]);
       setSizeDict([]);
       setMaterialDict([]);
+      setUnitDict([]);
     }
   };
 
   const handleCreateProduct = async () => {
     if (isSubmitting) return;
+
+    // 基础校验
+    if (!newProduct.code.trim()) return alert("请输入款号");
+    if (!newProduct.name.trim()) return alert("请输入品名");
+    if (newProduct.colors.length === 0) return alert("请至少选择一个颜色");
+    if (newProduct.sizes.length === 0) return alert("请至少选择一个尺码");
+
     setIsSubmitting(true);
     
     try {
@@ -279,38 +309,53 @@ export default function Dashboard() {
       }
 
       if (isEditMode && selectedProductId) {
-        await updateProduct(selectedProductId, {
+        const res = await updateProduct(selectedProductId, {
           code: newProduct.code,
           name: newProduct.name,
           colors: newProduct.colors,
           sizes: newProduct.sizes,
           yarnUsage: newProduct.yarnUsage,
           image: newProduct.image,
+          thumbnail: newProduct.thumbnail,
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value }))
         });
+        
+        if (res && 'success' in res && !res.success) {
+          alert(res.message);
+          setIsSubmitting(false);
+          return;
+        }
         await refreshData();
       } else {
-        const newId = await createProduct({
+        const res = await createProduct({
           code: newProduct.code,
           name: newProduct.name,
           colors: newProduct.colors,
           sizes: newProduct.sizes,
           yarnUsage: newProduct.yarnUsage,
           image: newProduct.image,
+          thumbnail: newProduct.thumbnail,
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value })),
           stages: newProductStages
         });
+
+        if (!res.success) {
+          alert(res.message);
+          setIsSubmitting(false);
+          return;
+        }
+
         await refreshData();
-        handleSelectProduct(newId);
+        if (res.id) handleSelectProduct(res.id);
       }
       setIsCreateModalOpen(false);
       setIsEditMode(false);
       setNewProduct({ code: "", name: "", image: "", colors: [], sizes: [], yarnUsage: [], customFields: [] });
       setNewProductFieldInput({ label: "", value: "" }); 
       setNewProductStages([]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Save failed:", error);
-      alert("保存失败，原因可能是：\n1. 图片文件太大，超出了服务器限制\n2. 网络连接超时\n\n请尝试换一张较小的图片测试，或检查阿里云服务器日志。");
+      alert("保存失败，原因可能是：\n1. 图片文件太大，超出了服务器限制\n2. 网络连接超时\n\n请尝试换一张较小的图片测试，或检查服务器日志。");
     } finally {
       setIsSubmitting(false);
     }
@@ -321,6 +366,7 @@ export default function Dashboard() {
       code: p.code, 
       name: p.name, 
       image: p.image || "", 
+      thumbnail: p.thumbnail || "",
       colors: p.colors || [],
       sizes: p.sizes || [],
       yarnUsage: p.yarnUsage || [],
@@ -462,6 +508,7 @@ export default function Dashboard() {
       code: "", 
       name: "", 
       image: "", 
+      thumbnail: "",
       colors: [],
       sizes: [],
       yarnUsage: [],
@@ -472,6 +519,38 @@ export default function Dashboard() {
   };
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-[#F3F4F6] text-slate-500">加载中...</div>;
+
+  // 未连接状态显示
+  if (!connectedInfo.isConnected) {
+    return (
+      <div className="flex h-screen bg-[#F3F4F6] items-center justify-center p-6 font-sans">
+        <div className="max-w-md w-full bg-white rounded-[48px] p-12 shadow-2xl shadow-indigo-100 flex flex-col items-center text-center border border-white">
+          <div className="w-24 h-24 bg-indigo-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-indigo-200 mb-8 rotate-3">
+            <ShieldCheck className="w-12 h-12 text-white -rotate-3" />
+          </div>
+          <h2 className="text-4xl font-black text-slate-900 mb-4 tracking-tight italic">万濮云</h2>
+          <p className="text-slate-500 font-medium mb-10 leading-relaxed text-sm">
+            欢迎使用万濮云毛衣开发管理系统。<br />
+            请先连接生产管理系统以管理您的款式数据。
+          </p>
+          <button 
+            onClick={() => setIsConnectModalOpen(true)}
+            className="w-full py-5 bg-indigo-600 text-white rounded-[24px] font-black text-sm shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+          >
+            <LinkIcon className="w-5 h-5" />
+            立即连接生产系统
+          </button>
+        </div>
+
+        {isConnectModalOpen && (
+          <ConnectModal 
+            onClose={() => setIsConnectModalOpen(false)}
+            onConnect={handleConnect}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-[#F3F4F6] overflow-hidden">
@@ -594,10 +673,19 @@ export default function Dashboard() {
           colorDict={colorDict}
           sizeDict={sizeDict}
           materialDict={materialDict}
+          unitDict={unitDict}
           dictLoading={dictLoading}
           onFetchColors={loadColors}
           onFetchSizes={loadSizes}
           onFetchMaterials={loadMaterials}
+          onFetchUnits={loadUnits}
+          onAddMaterial={async (m) => {
+            const res = await addMaterial(m);
+            if (res.success) {
+              refreshDicts();
+            }
+            return res;
+          }}
           onAddDictItem={async (type, name) => {
             const ok = await addDictItem(type, name);
             if (ok) {
@@ -633,6 +721,11 @@ export default function Dashboard() {
           templates={templates}
           onDeleteTemplate={async (id) => {
             await deleteStageTemplate(id);
+            const updated = await getStageTemplates();
+            setTemplates(updated);
+          }}
+          onUpdateTemplateOrder={async (newItems) => {
+            await updateStageTemplateOrder(newItems);
             const updated = await getStageTemplates();
             setTemplates(updated);
           }}

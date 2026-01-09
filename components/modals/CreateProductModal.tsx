@@ -11,7 +11,8 @@ interface CreateProductModalProps {
     sizes: string[];
     yarnUsage: YarnUsage[];
     customFields: ProductCustomField[]; 
-    image?: string 
+    image?: string;
+    thumbnail?: string;
   };
   setNewProduct: (p: any) => void;
   newProductFieldInput: { label: string; value: string };
@@ -22,10 +23,13 @@ interface CreateProductModalProps {
   colorDict: { id: string, name: string }[];
   sizeDict: { id: string, name: string }[];
   materialDict: { id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[];
-  dictLoading?: { colors: boolean, sizes: boolean, materials: boolean };
+  unitDict?: { id: string, name: string }[];
+  dictLoading?: { colors: boolean, sizes: boolean, materials: boolean, units: boolean };
   onFetchColors?: () => void;
   onFetchSizes?: () => void;
   onFetchMaterials?: () => void;
+  onFetchUnits?: () => void;
+  onAddMaterial?: (m: { type: '1'|'2', name: string, color: string, spec: string, unit_id?: string }) => Promise<{ success: boolean, message: string }>;
   onAddDictItem: (type: string, name: string) => Promise<boolean>;
   onAddCustomField: () => void;
   onRemoveCustomField: (id: string) => void;
@@ -38,6 +42,7 @@ interface CreateProductModalProps {
   isSubmitting?: boolean;
   templates: { id: string, name: string }[];
   onDeleteTemplate: (id: string) => void;
+  onUpdateTemplateOrder?: (items: { id: string, order: number }[]) => Promise<void>;
 }
 
 const SelectionModal = ({ 
@@ -48,6 +53,9 @@ const SelectionModal = ({
   selectedIds, 
   onConfirm,
   onAdd,
+  onAddMaterial,
+  unitDict,
+  onFetchUnits,
   placeholder = "搜索内容...",
   isLoading = false
 }: { 
@@ -58,20 +66,39 @@ const SelectionModal = ({
   selectedIds: string[], 
   onConfirm: (ids: string[]) => void,
   onAdd?: (name: string) => void,
+  onAddMaterial?: (m: { type: '1'|'2', name: string, color: string, spec: string, unit_id?: string }) => Promise<{ success: boolean, message: string }>,
+  unitDict?: { id: string, name: string }[],
+  onFetchUnits?: () => void,
   placeholder?: string,
   isLoading?: boolean
 }) => {
   const [search, setSearch] = useState("");
   const [tempSelectedIds, setTempSelectedIds] = useState<string[]>(selectedIds);
   const [activeType, setActiveType] = useState<string | 'all'>('all');
+  const [isAddingMaterial, setIsAddingMaterial] = useState(false);
+  const [newMaterial, setNewMaterial] = useState({ 
+    type: '1' as '1'|'2', 
+    name: '', 
+    color: '', 
+    spec: '', 
+    unit_id: '' 
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => { 
     if (isOpen) {
       setTempSelectedIds(selectedIds);
       setSearch("");
       setActiveType('all');
+      setIsAddingMaterial(false);
     }
   }, [isOpen, selectedIds]);
+
+  React.useEffect(() => {
+    if (isAddingMaterial && onFetchUnits) {
+      onFetchUnits();
+    }
+  }, [isAddingMaterial, onFetchUnits]);
 
   const allTypes = useMemo(() => {
     const types = new Set(options.map(o => o.type).filter(Boolean));
@@ -99,11 +126,119 @@ const SelectionModal = ({
     return uniqueIds.map(id => options.find(o => o.id === id)).filter(Boolean);
   }, [tempSelectedIds, options]);
 
+  const handleAddMaterialSubmit = async () => {
+    if (!newMaterial.name) {
+      alert("请输入原料名称");
+      return;
+    }
+
+    if (onAddMaterial) {
+      setIsSubmitting(true);
+      const res = await onAddMaterial(newMaterial);
+      setIsSubmitting(false);
+      if (res.success) {
+        setIsAddingMaterial(false);
+        setNewMaterial({ type: '1', name: '', color: '', spec: '', unit_id: '' });
+      } else {
+        alert(res.message);
+      }
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-2xl h-[700px] rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="bg-white w-full max-w-2xl h-[700px] rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 relative">
+        
+        {/* 新增物料表单层 (覆盖层) */}
+        {isAddingMaterial && (
+          <div className="absolute inset-0 z-[210] bg-white flex flex-col animate-in slide-in-from-bottom-full duration-300">
+            <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <h4 className="text-xl font-black text-slate-900">新增生产原料</h4>
+              <button onClick={() => setIsAddingMaterial(false)} className="p-2 hover:bg-slate-50 rounded-xl transition-colors text-slate-400"><X className="w-6 h-6" /></button>
+            </div>
+            <div className="flex-1 p-8 overflow-y-auto space-y-8 no-scrollbar">
+              <div className="space-y-4">
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block">原料类型 *</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={() => setNewMaterial({...newMaterial, type: '1'})}
+                    className={`py-4 rounded-2xl font-black text-sm border-2 transition-all ${newMaterial.type === '1' ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-100'}`}
+                  >
+                    毛料 (Yarn)
+                  </button>
+                  <button 
+                    onClick={() => setNewMaterial({...newMaterial, type: '2'})}
+                    className={`py-4 rounded-2xl font-black text-sm border-2 transition-all ${newMaterial.type === '2' ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-100'}`}
+                  >
+                    辅料 (Accessory)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block">{newMaterial.type === '1' ? '原料名称' : '辅料名称'} *</label>
+                  <input 
+                    value={newMaterial.name}
+                    onChange={(e) => setNewMaterial({...newMaterial, name: e.target.value})}
+                    placeholder="输入名称"
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block">{newMaterial.type === '1' ? '原料颜色' : '辅料颜色'}</label>
+                  <input 
+                    value={newMaterial.color}
+                    onChange={(e) => setNewMaterial({...newMaterial, color: e.target.value})}
+                    placeholder="输入色号/颜色 (可选)"
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block">{newMaterial.type === '1' ? '原料支数' : '辅料规格'}</label>
+                  <input 
+                    value={newMaterial.spec}
+                    onChange={(e) => setNewMaterial({...newMaterial, spec: e.target.value})}
+                    placeholder={newMaterial.type === '1' ? '例: 2/48 (可选)' : '例: 20cm (可选)'}
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all"
+                  />
+                </div>
+                {newMaterial.type === '2' && (
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest block">计量单位</label>
+                    <select 
+                      value={newMaterial.unit_id}
+                      onChange={(e) => setNewMaterial({...newMaterial, unit_id: e.target.value})}
+                      className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all appearance-none"
+                    >
+                      <option value="">请选择单位 (可选)</option>
+                      {unitDict?.map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="p-8 border-t border-slate-100 flex gap-4 shrink-0">
+              <button onClick={() => setIsAddingMaterial(false)} className="flex-1 py-4 text-sm font-bold text-slate-400">返回列表</button>
+              <button 
+                onClick={handleAddMaterialSubmit}
+                disabled={isSubmitting}
+                className="flex-[2] bg-slate-900 text-white py-4 rounded-2xl font-bold text-sm shadow-xl hover:bg-slate-800 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+              >
+                {isSubmitting ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                提交到生产系统
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="px-8 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
           <div className="flex items-baseline gap-3">
             <h4 className="text-lg font-bold text-slate-900 tracking-tight">{title}</h4>
@@ -142,7 +277,14 @@ const SelectionModal = ({
                 className="w-full pl-12 pr-4 py-3 bg-slate-100 border-2 border-slate-200 rounded-xl text-sm outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-black text-slate-900"
               />
             </div>
-            {onAdd && search.trim() && !options.some(o => o.name === search.trim()) && (
+            {onAddMaterial ? (
+              <button 
+                onClick={() => setIsAddingMaterial(true)}
+                className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-slate-800 transition-all flex items-center gap-2 shrink-0"
+              >
+                <Plus className="w-4 h-4" /> 极速新增物料
+              </button>
+            ) : onAdd && search.trim() && !options.some(o => o.name === search.trim()) && (
               <button 
                 onClick={() => { onAdd(search.trim()); setSearch(""); }}
                 className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-slate-800 transition-all flex items-center gap-2 shrink-0"
@@ -254,10 +396,13 @@ export const CreateProductModal = ({
   colorDict,
   sizeDict,
   materialDict,
+  unitDict,
   dictLoading,
   onFetchColors,
   onFetchSizes,
   onFetchMaterials,
+  onFetchUnits,
+  onAddMaterial,
   onAddDictItem,
   onAddCustomField,
   onRemoveCustomField,
@@ -269,10 +414,12 @@ export const CreateProductModal = ({
   onClose,
   isSubmitting,
   templates,
-  onDeleteTemplate
+  onDeleteTemplate,
+  onUpdateTemplateOrder
 }: CreateProductModalProps) => {
   const [activeColorForYarn, setActiveColorForYarn] = useState<string | null>(null);
   const [selectionType, setSelectionType] = useState<'color' | 'size' | 'yarn' | null>(null);
+  const [draggedTemplateId, setDraggedTemplateId] = useState<string | null>(null);
 
   // 当选择器打开时，按需加载对应的字典数据
   React.useEffect(() => {
@@ -286,7 +433,39 @@ export const CreateProductModal = ({
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setNewProduct({ ...newProduct, image: reader.result as string });
+        const img = new Image();
+        img.onload = () => {
+          // 1. 生成高清压缩图 (用于详情显示，最大 1200px)
+          const canvasLarge = document.createElement('canvas');
+          let wL = img.width;
+          let hL = img.height;
+          const MAX_L = 1200;
+          if (wL > hL) { if (wL > MAX_L) { hL *= MAX_L / wL; wL = MAX_L; } }
+          else { if (hL > MAX_L) { wL *= MAX_L / hL; hL = MAX_L; } }
+          canvasLarge.width = wL;
+          canvasLarge.height = hL;
+          canvasLarge.getContext('2d')?.drawImage(img, 0, 0, wL, hL);
+          const compressedLarge = canvasLarge.toDataURL('image/jpeg', 0.8);
+
+          // 2. 生成缩略图 (用于侧边栏，最大 200px)
+          const canvasThumb = document.createElement('canvas');
+          let wT = img.width;
+          let hT = img.height;
+          const MAX_T = 200;
+          if (wT > hT) { if (wT > MAX_T) { hT *= MAX_T / wT; wT = MAX_T; } }
+          else { if (hT > MAX_T) { wT *= MAX_T / hT; hT = MAX_T; } }
+          canvasThumb.width = wT;
+          canvasThumb.height = hT;
+          canvasThumb.getContext('2d')?.drawImage(img, 0, 0, wT, hT);
+          const compressedThumb = canvasThumb.toDataURL('image/jpeg', 0.6);
+
+          setNewProduct({ 
+            ...newProduct, 
+            image: compressedLarge, 
+            thumbnail: compressedThumb 
+          });
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -564,11 +743,39 @@ export const CreateProductModal = ({
                 </div>
                 <div className="bg-slate-50 p-8 rounded-[32px] border border-slate-100 space-y-6">
                   <div className="grid grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-3">
-                    {templates.map(t => (
-                      <div key={t.id} className="group relative">
+                    {templates.map((t, idx) => (
+                      <div 
+                        key={t.id} 
+                        className={`group relative transition-all ${draggedTemplateId === t.id ? 'opacity-30 scale-95' : 'opacity-100'}`}
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggedTemplateId(t.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          if (!draggedTemplateId || draggedTemplateId === t.id) return;
+                          
+                          const newTemplates = [...templates];
+                          const draggedIdx = newTemplates.findIndex(item => item.id === draggedTemplateId);
+                          const [removed] = newTemplates.splice(draggedIdx, 1);
+                          newTemplates.splice(idx, 0, removed);
+                          
+                          if (onUpdateTemplateOrder) {
+                            const updates = newTemplates.map((item, index) => ({ id: item.id, order: index }));
+                            await onUpdateTemplateOrder(updates);
+                          }
+                          setDraggedTemplateId(null);
+                        }}
+                        onDragEnd={() => setDraggedTemplateId(null)}
+                      >
                         <button 
                           onClick={() => onAddStage(t.name)} 
-                          className="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-[11px] font-bold text-slate-600 hover:border-indigo-400 hover:text-indigo-600 shadow-sm transition-all active:scale-95"
+                          className="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-[11px] font-bold text-slate-600 hover:border-indigo-400 hover:text-indigo-600 shadow-sm transition-all active:scale-95 cursor-move"
                         >
                           {t.name}
                         </button>
@@ -654,7 +861,9 @@ export const CreateProductModal = ({
             return mInfo?.id || y.materialName;
           })))}
           onConfirm={confirmYarnMaterials}
-          onAdd={(name) => onAddDictItem('material', name)}
+          onAddMaterial={onAddMaterial}
+          unitDict={unitDict}
+          onFetchUnits={onFetchUnits}
           placeholder="搜索原料、规格 or 色号..."
           isLoading={dictLoading?.materials}
         />
