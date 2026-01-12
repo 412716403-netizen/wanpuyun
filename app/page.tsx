@@ -433,7 +433,7 @@ export default function Dashboard() {
         logDetail += "未做任何修改，仅保存。";
       }
 
-      await updateStageInfo({
+      const res = await updateStageInfo({
         stageId,
         sampleId,
         status: tempStatus,
@@ -443,7 +443,48 @@ export default function Dashboard() {
         logDetail: logDetail.trim()
       });
 
-      await refreshData();
+      if (res && res.success && res.stage) {
+        // 关键优化：本地增量更新数据，不调用 refreshData()
+        setProducts(prev => prev.map(p => {
+          if (p.id === selectedProductId) {
+            return {
+              ...p,
+              samples: p.samples.map(s => {
+                if (s.id === sampleId) {
+                  return {
+                    ...s,
+                    logs: res.logs || s.logs,
+                    stages: s.stages.map(st => {
+                      if (st.id === stageId) {
+                        return {
+                          ...st,
+                          status: res.stage.status,
+                          updatedAt: new Date(res.stage.updatedAt).toLocaleDateString(),
+                          fields: res.stage.fields.map((f: any) => ({
+                            id: f.id,
+                            label: f.label,
+                            type: f.type,
+                            value: f.value
+                          })),
+                          attachments: res.stage.attachments.map((a: any) => ({
+                            id: a.id,
+                            fileName: a.fileName,
+                            fileUrl: a.fileUrl
+                          }))
+                        };
+                      }
+                      return st;
+                    })
+                  };
+                }
+                return s;
+              })
+            };
+          }
+          return p;
+        }));
+      }
+
       setFieldInput({ label: "", value: "" });
       setIsNodeModalOpen(false);
     } catch (error) {

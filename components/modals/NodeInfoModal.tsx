@@ -37,12 +37,52 @@ export const NodeInfoModal = ({
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
-      const newAttachment = {
-        id: `att-${Date.now()}`,
-        fileName: file.name,
-          fileUrl: base64String
-      };
-      setTempAttachments([...tempAttachments, newAttachment]);
+        
+        // 如果是图片，进行前端压缩
+        if (file.type.startsWith('image/')) {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const MAX_SIZE = 1200; // 节点附件图最大 1200px
+            
+            if (width > height) {
+              if (width > MAX_SIZE) {
+                height *= MAX_SIZE / width;
+                width = MAX_SIZE;
+              }
+            } else {
+              if (height > MAX_SIZE) {
+                width *= MAX_SIZE / height;
+                height = MAX_SIZE;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0, width, height);
+            
+            // 质量设为 0.7，平衡清晰度与体积
+            const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+            const newAttachment = {
+              id: `att-${Date.now()}`,
+              fileName: file.name.replace(/\.[^/.]+$/, "") + ".jpg", // 统一转为 jpg
+              fileUrl: compressedBase64
+            };
+            setTempAttachments([...tempAttachments, newAttachment]);
+          };
+          img.src = base64String;
+        } else {
+          // 非图片文件原样保存
+          const newAttachment = {
+            id: `att-${Date.now()}`,
+            fileName: file.name,
+            fileUrl: base64String
+          };
+          setTempAttachments([...tempAttachments, newAttachment]);
+        }
       };
       reader.readAsDataURL(file);
     }

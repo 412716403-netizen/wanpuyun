@@ -914,5 +914,28 @@ export async function updateStageInfo(params: {
   await prisma.log.create({
     data: { sampleId: params.sampleId, user: realUserName, action: '更新状态/参数', detail: params.logDetail }
   })
-  revalidatePath('/')
+  
+  // 关键优化：不再调用 revalidatePath('/')，避免全量数据重传
+  // 而是手动查询更新后的 Stage 数据并返回给前端
+  const fullUpdatedStage = await prisma.stage.findUnique({
+    where: { id: params.stageId },
+    include: { fields: true, attachments: true }
+  });
+  
+  const updatedLogs = await prisma.log.findMany({
+    where: { sampleId: params.sampleId },
+    orderBy: { time: 'desc' }
+  });
+
+  return { 
+    success: true, 
+    stage: fullUpdatedStage,
+    logs: updatedLogs.map(l => ({
+      id: l.id,
+      user: l.user,
+      action: l.action,
+      detail: l.detail,
+      time: l.time.toLocaleString()
+    }))
+  };
 }
