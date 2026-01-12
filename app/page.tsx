@@ -329,8 +329,9 @@ export default function Dashboard() {
         });
         
         if (res && res.success && res.product) {
+          const updatedProduct = res.product as Product;
           // 直接更新本地状态，避免全局刷新
-          setProducts(prev => prev.map(p => p.id === selectedProductId ? res.product : p));
+          setProducts(prev => prev.map(p => p.id === selectedProductId ? updatedProduct : p));
         } else if (res && !res.success) {
           alert(res.message);
           setIsSubmitting(false);
@@ -357,9 +358,10 @@ export default function Dashboard() {
 
         // 直接合并新产品到列表，并选中它
         if (res.product) {
-          setProducts(prev => [res.product, ...prev]);
-          setSelectedProductId(res.product.id);
-          setActiveSampleId(res.product.samples[0].id);
+          const newProd = res.product as Product;
+          setProducts(prev => [newProd, ...prev]);
+          setSelectedProductId(newProd.id);
+          setActiveSampleId(newProd.samples[0].id);
         }
       }
       setIsCreateModalOpen(false);
