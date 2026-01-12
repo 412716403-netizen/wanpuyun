@@ -470,15 +470,15 @@ export default function Dashboard() {
                       if (st.id === stageId) {
                         return {
                           ...st,
-                          status: updatedStage.status as StageStatus,
-                          updatedAt: new Date(updatedStage.updatedAt).toLocaleDateString(),
-                          fields: updatedStage.fields.map((f: any) => ({
+                          status: updatedStage!.status as StageStatus,
+                          updatedAt: new Date(updatedStage!.updatedAt).toLocaleDateString(),
+                          fields: (updatedStage!.fields || []).map((f: any) => ({
                             id: f.id,
                             label: f.label,
                             type: f.type,
                             value: f.value
                           })),
-                          attachments: updatedStage.attachments.map((a: any) => {
+                          attachments: (updatedStage!.attachments || []).map((a: any) => {
                             const localMatch = tempAttachments.find(la => la.fileName === a.fileName);
                             return {
                               id: a.id,
