@@ -467,11 +467,11 @@ export default function Dashboard() {
                     logs: res.newLog ? [res.newLog, ...s.logs] : s.logs,
                     stages: s.stages.map(st => {
                       if (st.id === stageId) {
-                        return {
-                          ...st,
-                          status: res.stage.status,
-                          updatedAt: new Date(res.stage.updatedAt).toLocaleDateString(),
-                          fields: res.stage.fields.map((f: any) => ({
+                          return {
+                            ...st,
+                            status: res.stage.status as StageStatus,
+                            updatedAt: new Date(res.stage.updatedAt).toLocaleDateString(),
+                            fields: res.stage.fields.map((f: any) => ({
                             id: f.id,
                             label: f.label,
                             type: f.type,
