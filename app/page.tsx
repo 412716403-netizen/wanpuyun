@@ -328,12 +328,14 @@ export default function Dashboard() {
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value }))
         });
         
-        if (res && 'success' in res && !res.success) {
+        if (res && res.success && res.product) {
+          // 直接更新本地状态，避免全局刷新
+          setProducts(prev => prev.map(p => p.id === selectedProductId ? res.product : p));
+        } else if (res && !res.success) {
           alert(res.message);
           setIsSubmitting(false);
           return;
         }
-        await refreshData();
       } else {
         const res = await createProduct({
           code: newProduct.code,
@@ -353,8 +355,12 @@ export default function Dashboard() {
           return;
         }
 
-        await refreshData();
-        if (res.id) handleSelectProduct(res.id);
+        // 直接合并新产品到列表，并选中它
+        if (res.product) {
+          setProducts(prev => [res.product, ...prev]);
+          setSelectedProductId(res.product.id);
+          setActiveSampleId(res.product.samples[0].id);
+        }
       }
       setIsCreateModalOpen(false);
       setIsEditMode(false);

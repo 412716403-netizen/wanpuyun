@@ -726,7 +726,7 @@ export async function createProduct(data: {
     }
   })
   revalidatePath('/')
-  return { success: true, id: product.id };
+  return { success: true, product: mapProduct(product) };
 }
 
 export async function updateProduct(id: string, data: {
@@ -789,6 +789,23 @@ export async function updateProduct(id: string, data: {
     }
   })
   revalidatePath('/')
+  const updatedProduct = await prisma.product.findUnique({
+    where: { id_tenantId: { id, tenantId } },
+    include: {
+      customFields: true,
+      yarnUsages: true,
+      samples: {
+        include: {
+          stages: {
+            include: { fields: true, attachments: true },
+            orderBy: { order: 'asc' }
+          },
+          logs: { orderBy: { time: 'desc' } }
+        }
+      }
+    }
+  });
+  return { success: true, product: updatedProduct ? mapProduct(updatedProduct) : null };
 }
 
 export async function createSampleVersion(productId: string, name: string) {
