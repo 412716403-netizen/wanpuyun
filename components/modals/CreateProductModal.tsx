@@ -435,29 +435,29 @@ export const CreateProductModal = ({
       reader.onloadend = () => {
         const img = new Image();
         img.onload = () => {
-          // 1. 生成高清压缩图 (用于详情显示，最大 1200px)
+          // 1. 生成高清压缩图 (用于详情显示，最大 1000px，质量 0.6)
           const canvasLarge = document.createElement('canvas');
           let wL = img.width;
           let hL = img.height;
-          const MAX_L = 1200;
+          const MAX_L = 1000;
           if (wL > hL) { if (wL > MAX_L) { hL *= MAX_L / wL; wL = MAX_L; } }
           else { if (hL > MAX_L) { wL *= MAX_L / hL; hL = MAX_L; } }
           canvasLarge.width = wL;
           canvasLarge.height = hL;
           canvasLarge.getContext('2d')?.drawImage(img, 0, 0, wL, hL);
-          const compressedLarge = canvasLarge.toDataURL('image/jpeg', 0.8);
+          const compressedLarge = canvasLarge.toDataURL('image/jpeg', 0.6);
 
-          // 2. 生成缩略图 (用于侧边栏，最大 200px)
+          // 2. 生成缩略图 (用于侧边栏，最大 160px，质量 0.5)
           const canvasThumb = document.createElement('canvas');
           let wT = img.width;
           let hT = img.height;
-          const MAX_T = 200;
+          const MAX_T = 160;
           if (wT > hT) { if (wT > MAX_T) { hT *= MAX_T / wT; wT = MAX_T; } }
           else { if (hT > MAX_T) { wT *= MAX_T / hT; hT = MAX_T; } }
           canvasThumb.width = wT;
           canvasThumb.height = hT;
           canvasThumb.getContext('2d')?.drawImage(img, 0, 0, wT, hT);
-          const compressedThumb = canvasThumb.toDataURL('image/jpeg', 0.6);
+          const compressedThumb = canvasThumb.toDataURL('image/jpeg', 0.5);
 
           setNewProduct({ 
             ...newProduct, 

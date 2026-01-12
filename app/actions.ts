@@ -535,8 +535,8 @@ export async function getProducts() {
         sizesJson: true,
         status: true,
         isSynced: true,
-        image: true,    // 暂时保留 image 以防旧数据没有 thumbnail
-        thumbnail: true, // 仅保留缩略图，侧边栏列表显示使用
+        // 关键优化：严禁在列表中传输高清大图 (image)
+        thumbnail: true, 
         createdAt: true,
         customFields: true,
         yarnUsages: true,
