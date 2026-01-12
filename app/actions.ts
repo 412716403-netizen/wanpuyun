@@ -930,7 +930,7 @@ export async function updateStageInfo(params: {
       await prisma.stage.update({ where: { id: nextStage.id }, data: { status: 'in_progress' } })
     }
   }
-  await prisma.log.create({
+  const newLog = await prisma.log.create({
     data: { sampleId: params.sampleId, user: realUserName, action: '更新状态/参数', detail: params.logDetail }
   })
   
@@ -945,20 +945,15 @@ export async function updateStageInfo(params: {
     }
   });
   
-  const updatedLogs = await prisma.log.findMany({
-    where: { sampleId: params.sampleId },
-    orderBy: { time: 'desc' }
-  });
-
   return { 
     success: true, 
     stage: fullUpdatedStage,
-    logs: updatedLogs.map(l => ({
-      id: l.id,
-      user: l.user,
-      action: l.action,
-      detail: l.detail,
-      time: l.time.toLocaleString()
-    }))
+    newLog: {
+      id: newLog.id,
+      user: newLog.user,
+      action: newLog.action,
+      detail: newLog.detail,
+      time: newLog.time.toLocaleString()
+    }
   };
 }

@@ -433,12 +433,15 @@ export default function Dashboard() {
         logDetail += "未做任何修改，仅保存。";
       }
 
+      // 极致优化：立即关闭弹窗并清空输入，实现“瞬时”体感
+      setIsNodeModalOpen(false);
+      setFieldInput({ label: "", value: "" });
+
       const res = await updateStageInfo({
         stageId,
         sampleId,
         status: tempStatus,
         fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
-        // 关键优化：如果是已有的图片（非 data: 开头），不传 Base64 数据给后端，只传名字
         attachments: tempAttachments.map(a => ({ 
           fileName: a.fileName, 
           fileUrl: a.fileUrl.startsWith('data:') ? a.fileUrl : "" 
@@ -448,7 +451,6 @@ export default function Dashboard() {
       });
 
       if (res && res.success && res.stage) {
-        // 关键优化：本地增量更新数据，不调用 refreshData()
         setProducts(prev => prev.map(p => {
           if (p.id === selectedProductId) {
             return {
@@ -457,7 +459,8 @@ export default function Dashboard() {
                 if (s.id === sampleId) {
                   return {
                     ...s,
-                    logs: res.logs || s.logs,
+                    // 将新日志插到最前面
+                    logs: res.newLog ? [res.newLog, ...s.logs] : s.logs,
                     stages: s.stages.map(st => {
                       if (st.id === stageId) {
                         return {
@@ -470,7 +473,6 @@ export default function Dashboard() {
                             type: f.type,
                             value: f.value
                           })),
-                          // 合并附件：保留本地已有的 Base64 数据，只更新 ID 信息
                           attachments: res.stage.attachments.map((a: any) => {
                             const localMatch = tempAttachments.find(la => la.fileName === a.fileName);
                             return {
@@ -491,13 +493,12 @@ export default function Dashboard() {
           }
           return p;
         }));
+      } else if (res && !res.success) {
+        alert("保存失败：" + res.message);
       }
-
-      setFieldInput({ label: "", value: "" });
-      setIsNodeModalOpen(false);
     } catch (error) {
       console.error("Save node info failed:", error);
-      alert("保存失败，请重试。");
+      alert("网络异常，保存可能未成功，请刷新检查。");
     } finally {
       setIsSubmitting(false);
     }
