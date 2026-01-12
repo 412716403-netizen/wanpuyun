@@ -535,6 +535,7 @@ export async function getProducts() {
         sizesJson: true,
         status: true,
         isSynced: true,
+        image: true,    // 暂时保留 image 以防旧数据没有 thumbnail
         thumbnail: true, // 仅保留缩略图，侧边栏列表显示使用
         createdAt: true,
         customFields: true,
@@ -564,6 +565,37 @@ export async function getProducts() {
   } catch (error) {
     console.error("[getProducts] 查询失败:", error);
     return [];
+  }
+}
+
+// 获取仪表盘初始数据 (合并请求，减少握手次数)
+export async function getInitialData() {
+  const startTime = Date.now();
+  console.log("[getInitialData] 开始合并加载数据...");
+  
+  try {
+    const [products, templates, connectedInfo] = await Promise.all([
+      getProducts(),
+      getStageTemplates(),
+      getConnectedInfo()
+    ]);
+    
+    // 如果有产品，预取第一个产品的详情
+    let firstProductDetail = null;
+    if (products.length > 0) {
+      firstProductDetail = await getProductDetail(products[0].id);
+    }
+    
+    console.log(`[getInitialData] 完成, 耗时=${Date.now() - startTime}ms`);
+    return {
+      products,
+      templates,
+      connectedInfo,
+      firstProductDetail
+    };
+  } catch (error) {
+    console.error("[getInitialData] 失败:", error);
+    return null;
   }
 }
 

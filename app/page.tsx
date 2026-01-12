@@ -10,6 +10,7 @@ import { ConnectModal } from "@/components/modals/ConnectModal";
 import { 
   getProducts, 
   getProductDetail,
+  getInitialData,
   createProduct, 
   toggleProductStatus, 
   toggleSyncStatus, 
@@ -62,18 +63,20 @@ export default function Dashboard() {
   // 初始化加载数据
   useEffect(() => {
     async function loadData() {
-      console.log("[Dashboard] 开始并行加载基础数据...");
+      console.log("[Dashboard] 开始合并加载基础数据...");
       const startTime = Date.now();
       
       try {
-        // 1. 优先加载产品列表和基础配置
-        const [productsData, templatesData, connInfo] = await Promise.all([
-          getProducts(),
-          getStageTemplates(),
-          getConnectedInfo()
-        ]);
+        const data = await getInitialData();
         
-        console.log(`[Dashboard] 基础数据加载完成, 耗时=${Date.now() - startTime}ms`);
+        if (!data) {
+          setLoading(false);
+          return;
+        }
+        
+        console.log(`[Dashboard] 数据合并加载完成, 耗时=${Date.now() - startTime}ms`);
+        
+        const { products: productsData, templates: templatesData, connectedInfo: connInfo, firstProductDetail } = data;
         
         setProducts(productsData);
         setTemplates(templatesData);
@@ -86,12 +89,10 @@ export default function Dashboard() {
             setActiveSampleId(firstProduct.samples[0].id);
           }
           
-          // 首页加载后，静默拉取第一个产品的详情（包含附件）
-          getProductDetail(firstProduct.id).then(fullProduct => {
-            if (fullProduct) {
-              setProducts(prev => prev.map(p => p.id === firstProduct.id ? fullProduct : p));
-            }
-          });
+          // 如果已经拿到了第一个产品的详情，直接更新到状态中
+          if (firstProductDetail) {
+            setProducts(prev => prev.map(p => p.id === firstProduct.id ? firstProductDetail : p));
+          }
         }
 
         // 核心数据加载完就关闭全屏加载状态
@@ -99,7 +100,7 @@ export default function Dashboard() {
 
       } catch (error) {
         console.error("[Dashboard] 数据加载发生严重错误:", error);
-        setLoading(false); // 即使报错也要关闭加载状态，避免死锁
+        setLoading(false); 
       }
     }
     loadData();
