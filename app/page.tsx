@@ -76,7 +76,7 @@ export default function Dashboard() {
         
         console.log(`[Dashboard] 数据合并加载完成, 耗时=${Date.now() - startTime}ms`);
         
-        const { products: productsData, templates: templatesData, connectedInfo: connInfo, firstProductDetail } = data;
+        const { products: productsData, templates: templatesData, connectedInfo: connInfo } = data;
         
         setProducts(productsData);
         setTemplates(templatesData);
@@ -89,10 +89,15 @@ export default function Dashboard() {
             setActiveSampleId(firstProduct.samples[0].id);
           }
           
-          // 如果已经拿到了第一个产品的详情，直接更新到状态中
-          if (firstProductDetail) {
-            setProducts(prev => prev.map(p => p.id === firstProduct.id ? firstProductDetail : p));
-          }
+          // 首页渲染后，立即异步请求第一个款式的详情
+          setDetailLoading(true);
+          getProductDetail(firstProduct.id).then(fullProduct => {
+            if (fullProduct) {
+              setProducts(prev => prev.map(p => p.id === firstProduct.id ? fullProduct : p));
+            }
+          }).finally(() => {
+            setDetailLoading(false);
+          });
         }
 
         // 核心数据加载完就关闭全屏加载状态

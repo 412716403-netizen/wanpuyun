@@ -11,8 +11,8 @@ function mapProduct(dbProduct: any): Product {
     id: dbProduct.id,
     code: dbProduct.code,
     name: dbProduct.name,
-    colors: JSON.parse(dbProduct.colorsJson || "[]"),
-    sizes: JSON.parse(dbProduct.sizesJson || "[]"),
+    colors: dbProduct.colorsJson ? JSON.parse(dbProduct.colorsJson) : [],
+    sizes: dbProduct.sizesJson ? JSON.parse(dbProduct.sizesJson) : [],
     yarnUsage: dbProduct.yarnUsages?.map((y: any) => ({
       id: y.id,
       color: y.color,
@@ -28,39 +28,39 @@ function mapProduct(dbProduct: any): Product {
     image: dbProduct.image || "",
     thumbnail: dbProduct.thumbnail || "",
     createdAt: dbProduct.createdAt.toISOString().split('T')[0],
-    customFields: dbProduct.customFields.map((cf: any) => ({
+    customFields: dbProduct.customFields?.map((cf: any) => ({
       id: cf.id,
       label: cf.label,
       value: cf.value,
-    })),
-    samples: dbProduct.samples.map((s: any) => ({
+    })) || [],
+    samples: dbProduct.samples?.map((s: any) => ({
       id: s.id,
       name: s.name,
-      logs: s.logs.map((l: any) => ({
+      logs: s.logs?.map((l: any) => ({
         id: l.id,
         user: l.user,
         action: l.action,
         detail: l.detail,
         time: l.time.toLocaleString(),
-      })),
+      })) || [],
       stages: s.stages.map((st: any) => ({
         id: st.id,
         name: st.name,
         status: st.status as StageStatus,
-        updatedAt: st.updatedAt.toLocaleDateString(),
-        fields: st.fields.map((f: any) => ({
+        updatedAt: st.updatedAt ? st.updatedAt.toLocaleDateString() : "",
+        fields: st.fields?.map((f: any) => ({
           id: f.id,
           label: f.label,
           type: f.type,
           value: f.value,
-        })),
+        })) || [],
         attachments: st.attachments?.map((a: any) => ({
           id: a.id,
           fileName: a.fileName,
           fileUrl: a.fileUrl,
         })) || [],
       })),
-    })),
+    })) || [],
   }
 }
 
@@ -523,7 +523,7 @@ export async function getProducts() {
       return [];
     }
 
-    console.log(`[getProducts] 开始轻量化查询, 租户=${tenantId}...`);
+    console.log(`[getProducts] 开始极简列表查询, 租户=${tenantId}...`);
     const dbProducts = await prisma.product.findMany({
       where: { tenantId },
       select: {
@@ -531,27 +531,19 @@ export async function getProducts() {
         code: true,
         name: true,
         tenantId: true,
-        colorsJson: true,
-        sizesJson: true,
         status: true,
         isSynced: true,
-        // 关键优化：严禁在列表中传输高清大图 (image)
         thumbnail: true, 
         createdAt: true,
-        customFields: true,
-        yarnUsages: true,
+        // 列表只需要知道进度状态，不需要字段和日志
         samples: {
-          include: {
+          select: {
+            id: true,
+            name: true,
             stages: {
-              include: { 
-                fields: true, 
-                attachments: {
-                  select: { id: true, fileName: true, fileType: true, createdAt: true, stageId: true } // 不选附件的 fileUrl
-                } 
-              },
+              select: { id: true, name: true, status: true, order: true },
               orderBy: { order: 'asc' }
-            },
-            logs: { orderBy: { time: 'desc' } }
+            }
           }
         }
       },
@@ -568,10 +560,10 @@ export async function getProducts() {
   }
 }
 
-// 获取仪表盘初始数据 (合并请求，减少握手次数)
+// 获取仪表盘初始数据 (极致优化：不再预取详情，只取列表)
 export async function getInitialData() {
   const startTime = Date.now();
-  console.log("[getInitialData] 开始合并加载数据...");
+  console.log("[getInitialData] 开始合并加载基础数据...");
   
   try {
     const [products, templates, connectedInfo] = await Promise.all([
@@ -580,18 +572,11 @@ export async function getInitialData() {
       getConnectedInfo()
     ]);
     
-    // 如果有产品，预取第一个产品的详情
-    let firstProductDetail = null;
-    if (products.length > 0) {
-      firstProductDetail = await getProductDetail(products[0].id);
-    }
-    
-    console.log(`[getInitialData] 完成, 耗时=${Date.now() - startTime}ms`);
+    console.log(`[getInitialData] 基础数据获取完成, 耗时=${Date.now() - startTime}ms`);
     return {
       products,
       templates,
-      connectedInfo,
-      firstProductDetail
+      connectedInfo
     };
   } catch (error) {
     console.error("[getInitialData] 失败:", error);
