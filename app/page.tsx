@@ -499,7 +499,7 @@ export default function Dashboard() {
           return p;
         }));
       } else if (res && !res.success) {
-        alert("保存失败：" + res.message);
+        alert("保存失败：" + (res.message || "未知错误"));
       }
     } catch (error) {
       console.error("Save node info failed:", error);

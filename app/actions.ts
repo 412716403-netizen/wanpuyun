@@ -884,76 +884,81 @@ export async function updateStageInfo(params: {
   sampleId: string,
   userName: string, // 保留参数名以兼容前端调用，但内部改用 Cookie
   logDetail: string
-}) {
-  const cookieStore = await cookies();
-  const realUserName = cookieStore.get('connected_user_name')?.value || params.userName || '未知用户';
+}): Promise<{ success: boolean; message?: string; stage?: any; newLog?: any }> {
+  try {
+    const cookieStore = await cookies();
+    const realUserName = cookieStore.get('connected_user_name')?.value || params.userName || '未知用户';
 
-  // 1. 更新阶段基本信息
-  const updatedStage = await prisma.stage.update({
-    where: { id: params.stageId },
-    data: {
-      status: params.status,
-      fields: {
-        deleteMany: {},
-        create: params.fields.map(f => ({ label: f.label, value: f.value, type: f.type }))
+    // 1. 更新阶段基本信息
+    const updatedStage = await prisma.stage.update({
+      where: { id: params.stageId },
+      data: {
+        status: params.status,
+        fields: {
+          deleteMany: {},
+          create: params.fields.map(f => ({ label: f.label, value: f.value, type: f.type }))
+        }
+      }
+    })
+
+    // 2. 处理附件：只创建带数据的“新”附件
+    const newAttachments = params.attachments.filter(a => a.fileUrl.startsWith('data:'));
+    if (newAttachments.length > 0) {
+      await prisma.attachment.createMany({
+        data: newAttachments.map(a => ({
+          stageId: params.stageId,
+          fileName: a.fileName,
+          fileUrl: a.fileUrl
+        }))
+      });
+    }
+    
+    // 3. 处理附件：删除不在列表中的附件
+    const currentFileNames = params.attachments.map(a => a.fileName);
+    await prisma.attachment.deleteMany({
+      where: {
+        stageId: params.stageId,
+        fileName: { notIn: currentFileNames }
+      }
+    });
+
+    if (params.status === 'completed') {
+      const nextStage = await prisma.stage.findFirst({
+        where: { sampleId: params.sampleId, order: { gt: updatedStage.order } },
+        orderBy: { order: 'asc' }
+      })
+      if (nextStage && nextStage.status === 'pending') {
+        await prisma.stage.update({ where: { id: nextStage.id }, data: { status: 'in_progress' } })
       }
     }
-  })
-
-  // 2. 处理附件：只创建带数据的“新”附件
-  const newAttachments = params.attachments.filter(a => a.fileUrl.startsWith('data:'));
-  if (newAttachments.length > 0) {
-    await prisma.attachment.createMany({
-      data: newAttachments.map(a => ({
-        stageId: params.stageId,
-        fileName: a.fileName,
-        fileUrl: a.fileUrl
-      }))
-    });
-  }
-  
-  // 3. 处理附件：删除不在列表中的附件
-  const currentFileNames = params.attachments.map(a => a.fileName);
-  await prisma.attachment.deleteMany({
-    where: {
-      stageId: params.stageId,
-      fileName: { notIn: currentFileNames }
-    }
-  });
-
-  if (params.status === 'completed') {
-    const nextStage = await prisma.stage.findFirst({
-      where: { sampleId: params.sampleId, order: { gt: updatedStage.order } },
-      orderBy: { order: 'asc' }
+    const newLog = await prisma.log.create({
+      data: { sampleId: params.sampleId, user: realUserName, action: '更新状态/参数', detail: params.logDetail }
     })
-    if (nextStage && nextStage.status === 'pending') {
-      await prisma.stage.update({ where: { id: nextStage.id }, data: { status: 'in_progress' } })
-    }
+    
+    // 关键优化：返回给前端的结果中，剔除沉重的 fileUrl (Base64)
+    const fullUpdatedStage = await prisma.stage.findUnique({
+      where: { id: params.stageId },
+      include: { 
+        fields: true, 
+        attachments: {
+          select: { id: true, fileName: true, createdAt: true, stageId: true } // 不选 fileUrl
+        } 
+      }
+    });
+    
+    return { 
+      success: true, 
+      stage: fullUpdatedStage,
+      newLog: {
+        id: newLog.id,
+        user: newLog.user,
+        action: newLog.action,
+        detail: newLog.detail,
+        time: newLog.time.toLocaleString()
+      }
+    };
+  } catch (error) {
+    console.error("[updateStageInfo] Error:", error);
+    return { success: false, message: error instanceof Error ? error.message : "更新失败" };
   }
-  const newLog = await prisma.log.create({
-    data: { sampleId: params.sampleId, user: realUserName, action: '更新状态/参数', detail: params.logDetail }
-  })
-  
-  // 关键优化：返回给前端的结果中，剔除沉重的 fileUrl (Base64)
-  const fullUpdatedStage = await prisma.stage.findUnique({
-    where: { id: params.stageId },
-    include: { 
-      fields: true, 
-      attachments: {
-        select: { id: true, fileName: true, createdAt: true, stageId: true } // 不选 fileUrl
-      } 
-    }
-  });
-  
-  return { 
-    success: true, 
-    stage: fullUpdatedStage,
-    newLog: {
-      id: newLog.id,
-      user: newLog.user,
-      action: newLog.action,
-      detail: newLog.detail,
-      time: newLog.time.toLocaleString()
-    }
-  };
 }
