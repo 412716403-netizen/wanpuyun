@@ -455,6 +455,7 @@ export default function Dashboard() {
       });
 
       if (res && res.success && res.stage) {
+        const updatedStage = res.stage;
         setProducts(prev => prev.map(p => {
           if (p.id === selectedProductId) {
             return {
@@ -467,17 +468,17 @@ export default function Dashboard() {
                     logs: res.newLog ? [res.newLog, ...s.logs] : s.logs,
                     stages: s.stages.map(st => {
                       if (st.id === stageId) {
-                          return {
-                            ...st,
-                            status: res.stage.status as StageStatus,
-                            updatedAt: new Date(res.stage.updatedAt).toLocaleDateString(),
-                            fields: res.stage.fields.map((f: any) => ({
+                        return {
+                          ...st,
+                          status: updatedStage.status as StageStatus,
+                          updatedAt: new Date(updatedStage.updatedAt).toLocaleDateString(),
+                          fields: updatedStage.fields.map((f: any) => ({
                             id: f.id,
                             label: f.label,
                             type: f.type,
                             value: f.value
                           })),
-                          attachments: res.stage.attachments.map((a: any) => {
+                          attachments: updatedStage.attachments.map((a: any) => {
                             const localMatch = tempAttachments.find(la => la.fileName === a.fileName);
                             return {
                               id: a.id,
