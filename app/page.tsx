@@ -259,7 +259,9 @@ export default function Dashboard() {
     setSelectedProductId(id);
     const product = products.find(p => p.id === id);
     if (product) {
-      setActiveSampleId(product.samples[0].id);
+      if (product.samples && product.samples.length > 0) {
+        setActiveSampleId(product.samples[0].id);
+      }
       
       // 检查是否已经加载了完整详情（简单通过标记或判断是否有附件数据）
       const hasFullData = product.samples.some(s => s.stages.some(st => st.attachments.some(a => a.fileUrl)));
@@ -362,7 +364,9 @@ export default function Dashboard() {
           const newProd = res.product as Product;
           setProducts(prev => [newProd, ...prev]);
           setSelectedProductId(newProd.id);
-          setActiveSampleId(newProd.samples[0].id);
+          if (newProd.samples && newProd.samples.length > 0) {
+            setActiveSampleId(newProd.samples[0].id);
+          }
         }
       }
       setIsCreateModalOpen(false);
@@ -555,7 +559,9 @@ export default function Dashboard() {
       setProducts(data);
       if (data.length > 0) {
         setSelectedProductId(data[0].id);
-        setActiveSampleId(data[0].samples[0].id);
+        if (data[0].samples && data[0].samples.length > 0) {
+          setActiveSampleId(data[0].samples[0].id);
+        }
       } else {
         setSelectedProductId("");
         setActiveSampleId("");

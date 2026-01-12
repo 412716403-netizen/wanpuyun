@@ -723,6 +723,19 @@ export async function createProduct(data: {
           }
         }]
       }
+    },
+    include: {
+      customFields: true,
+      yarnUsages: true,
+      samples: {
+        include: {
+          stages: {
+            include: { fields: true, attachments: true },
+            orderBy: { order: 'asc' }
+          },
+          logs: { orderBy: { time: 'desc' } }
+        }
+      }
     }
   })
   revalidatePath('/')
