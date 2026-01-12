@@ -2,8 +2,9 @@
 
 ### 1. 项目概况
 - **类型**：针织毛衫开发全生命周期管理系统 (SaaS)。
-- **技术栈**：Next.js 15 (App Router), Prisma ORM, SQLite, Tailwind CSS 4, Lucide Icons。
+- **技术栈**：Next.js 15 (App Router), Prisma ORM (固定版本 v5.22.0), SQLite, Tailwind CSS 4, Lucide Icons。
 - **环境配置**：已优化 Server Actions 传输限制至 100MB，适配大附件上传。
+- **运维规范**：所有数据库操作（migrate/push）必须指定版本 `npx prisma@5.22.0`，严禁使用默认的最新版本（如 v7.x）以防配置冲突。
 
 ### 2. 已完成核心功能
 - **款式管理 (Product)**：
