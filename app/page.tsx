@@ -112,6 +112,7 @@ export default function Dashboard() {
   }, []);
 
   const loadColors = async () => {
+    // 严格判断：只有在未连接、已有数据、或正在加载时，才拦截请求
     if (!connectedInfo.isConnected || colorDict.length > 0 || dictLoading.colors) return;
     setDictLoading(prev => ({ ...prev, colors: true }));
     try {
@@ -444,6 +445,7 @@ export default function Dashboard() {
         sampleId,
         status: tempStatus,
         fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
+        // 优化点：只发送新增附件的 Base64 数据，但保留所有附件的文件名用于后端同步
         attachments: tempAttachments.map(a => ({ 
           fileName: a.fileName, 
           fileUrl: a.fileUrl.startsWith('data:') ? a.fileUrl : "" 
