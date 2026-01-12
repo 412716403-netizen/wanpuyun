@@ -438,7 +438,11 @@ export default function Dashboard() {
         sampleId,
         status: tempStatus,
         fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
-        attachments: tempAttachments.map(a => ({ fileName: a.fileName, fileUrl: a.fileUrl })),
+        // 关键优化：如果是已有的图片（非 data: 开头），不传 Base64 数据给后端，只传名字
+        attachments: tempAttachments.map(a => ({ 
+          fileName: a.fileName, 
+          fileUrl: a.fileUrl.startsWith('data:') ? a.fileUrl : "" 
+        })),
         userName: "Jun Zheng",
         logDetail: logDetail.trim()
       });
@@ -466,11 +470,15 @@ export default function Dashboard() {
                             type: f.type,
                             value: f.value
                           })),
-                          attachments: res.stage.attachments.map((a: any) => ({
-                            id: a.id,
-                            fileName: a.fileName,
-                            fileUrl: a.fileUrl
-                          }))
+                          // 合并附件：保留本地已有的 Base64 数据，只更新 ID 信息
+                          attachments: res.stage.attachments.map((a: any) => {
+                            const localMatch = tempAttachments.find(la => la.fileName === a.fileName);
+                            return {
+                              id: a.id,
+                              fileName: a.fileName,
+                              fileUrl: localMatch ? localMatch.fileUrl : ""
+                            };
+                          })
                         };
                       }
                       return st;

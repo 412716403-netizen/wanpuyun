@@ -888,6 +888,7 @@ export async function updateStageInfo(params: {
   const cookieStore = await cookies();
   const realUserName = cookieStore.get('connected_user_name')?.value || params.userName || '未知用户';
 
+  // 1. 更新阶段基本信息
   const updatedStage = await prisma.stage.update({
     where: { id: params.stageId },
     data: {
@@ -895,13 +896,31 @@ export async function updateStageInfo(params: {
       fields: {
         deleteMany: {},
         create: params.fields.map(f => ({ label: f.label, value: f.value, type: f.type }))
-      },
-      attachments: {
-        deleteMany: {},
-        create: params.attachments.map(a => ({ fileName: a.fileName, fileUrl: a.fileUrl }))
       }
     }
   })
+
+  // 2. 处理附件：只创建带数据的“新”附件
+  const newAttachments = params.attachments.filter(a => a.fileUrl.startsWith('data:'));
+  if (newAttachments.length > 0) {
+    await prisma.attachment.createMany({
+      data: newAttachments.map(a => ({
+        stageId: params.stageId,
+        fileName: a.fileName,
+        fileUrl: a.fileUrl
+      }))
+    });
+  }
+  
+  // 3. 处理附件：删除不在列表中的附件
+  const currentFileNames = params.attachments.map(a => a.fileName);
+  await prisma.attachment.deleteMany({
+    where: {
+      stageId: params.stageId,
+      fileName: { notIn: currentFileNames }
+    }
+  });
+
   if (params.status === 'completed') {
     const nextStage = await prisma.stage.findFirst({
       where: { sampleId: params.sampleId, order: { gt: updatedStage.order } },
@@ -915,11 +934,15 @@ export async function updateStageInfo(params: {
     data: { sampleId: params.sampleId, user: realUserName, action: '更新状态/参数', detail: params.logDetail }
   })
   
-  // 关键优化：不再调用 revalidatePath('/')，避免全量数据重传
-  // 而是手动查询更新后的 Stage 数据并返回给前端
+  // 关键优化：返回给前端的结果中，剔除沉重的 fileUrl (Base64)
   const fullUpdatedStage = await prisma.stage.findUnique({
     where: { id: params.stageId },
-    include: { fields: true, attachments: true }
+    include: { 
+      fields: true, 
+      attachments: {
+        select: { id: true, fileName: true, createdAt: true, stageId: true } // 不选 fileUrl
+      } 
+    }
   });
   
   const updatedLogs = await prisma.log.findMany({
