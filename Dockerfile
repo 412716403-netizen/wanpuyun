@@ -1,7 +1,10 @@
 # --- 阶段 1: 依赖安装 ---
     FROM node:20-slim AS deps
-    # 安装必要的运行时库 (Debian 源在阿里云比 Alpine 稳)
-    RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+    # 安装必要的运行时库 (使用阿里云源加速)
+    RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+        apt-get update && \
+        apt-get install -y openssl && \
+        rm -rf /var/lib/apt/lists/*
     WORKDIR /app
     
     COPY package.json package-lock.json ./
@@ -24,8 +27,11 @@
 FROM node:20-slim AS runner
 WORKDIR /app
 
-# 关键修复：在运行阶段也安装 openssl 库
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# 关键修复：使用阿里云源加速安装 openssl 库
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get update && \
+    apt-get install -y openssl && \
+    rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 
