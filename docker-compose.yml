@@ -8,9 +8,9 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # 关键：将容器内的数据库文件挂载到宿主机，防止数据丢失
-      # 确保宿主机目录下已存在 dev.db 文件或由 docker 自动创建
-      - ./prisma/dev.db:/app/prisma/dev.db
+      # 彻底修复：挂载整个目录，避免 Docker 将文件误认为文件夹
+      - ./data:/app/data
     environment:
-      - DATABASE_URL=file:./prisma/dev.db
+      - DATABASE_URL=file:/app/data/dev.db
       - NODE_ENV=production
+      - TZ=Asia/Shanghai
