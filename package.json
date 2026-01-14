@@ -5,9 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "npx prisma migrate deploy && next start",
+    "start": "prisma migrate deploy && next start",
     "lint": "next lint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    "db:gen": "prisma generate",
+    "db:reset": "prisma migrate reset"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

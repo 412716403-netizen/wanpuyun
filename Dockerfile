@@ -17,7 +17,7 @@
     COPY . .
     
     # 生成 Prisma Client 并构建应用
-    RUN npx prisma@5.22.0 generate
+    RUN npm run db:gen
     RUN npm run build
     
 # --- 阶段 3: 运行环境 ---
