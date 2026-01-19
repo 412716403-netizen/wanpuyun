@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { ProductSidebar } from "@/components/ProductSidebar";
 import { MainContent } from "@/components/MainContent";
 import { CreateProductModal } from "@/components/modals/CreateProductModal";
 import { NodeInfoModal } from "@/components/modals/NodeInfoModal";
 import { LogModal } from "@/components/modals/LogModal";
 import { ConnectModal } from "@/components/modals/ConnectModal";
+import { DailyReportModal } from "@/components/modals/DailyReportModal";
 import { 
   getProducts, 
   getProductDetail,
@@ -31,7 +32,9 @@ import {
   externalLogin,
   disconnectExternal,
   getExternalUnits,
-  addMaterial
+  addMaterial,
+  getDailyReport,
+  getStageTrendReport
 } from "./actions";
 import { Plus, Link as LinkIcon, ShieldCheck } from "lucide-react";
 import { 
@@ -41,6 +44,7 @@ import {
   StageStatus,
   YarnUsage
 } from "@/types";
+import { logger } from "@/lib/logger";
 
 export default function Dashboard() {
   // --- States ---
@@ -63,7 +67,7 @@ export default function Dashboard() {
   // 初始化加载数据
   useEffect(() => {
     async function loadData() {
-      console.log("[Dashboard] 开始合并加载基础数据...");
+      logger.info("[Dashboard] 开始合并加载基础数据...");
       const startTime = Date.now();
       
       try {
@@ -74,7 +78,7 @@ export default function Dashboard() {
           return;
         }
         
-        console.log(`[Dashboard] 数据合并加载完成, 耗时=${Date.now() - startTime}ms`);
+        logger.perf("[Dashboard] 数据合并加载完成", startTime);
         
         const { products: productsData, templates: templatesData, connectedInfo: connInfo } = data;
         
@@ -106,7 +110,7 @@ export default function Dashboard() {
         setLoading(false);
 
       } catch (error) {
-        console.error("[Dashboard] 数据加载发生严重错误:", error);
+        logger.error("[Dashboard] 数据加载发生严重错误:", error);
         setLoading(false); 
       }
     }
@@ -182,6 +186,7 @@ export default function Dashboard() {
   const [isNodeModalOpen, setIsNodeModalOpen] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
@@ -211,24 +216,30 @@ export default function Dashboard() {
   // --- Derived Data ---
   const selectedProduct = products.find((p: Product) => p.id === selectedProductId) || products[0] || null;
   const currentSample = selectedProduct?.samples?.find(s => s.id === activeSampleId) || selectedProduct?.samples?.[0] || null;
-  const uniqueStageNames = Array.from(new Set(products.flatMap((p: Product) => p.samples?.flatMap(s => s.stages.map(st => st.name)) || [])));
+  
+  // 使用 useMemo 缓存计算结果，避免每次渲染都重新计算
+  const uniqueStageNames = useMemo(() => {
+    return Array.from(new Set(products.flatMap((p: Product) => p.samples?.flatMap(s => s.stages.map(st => st.name)) || [])));
+  }, [products]);
 
-  const filteredProducts = products.filter((p: Product) => {
-    if (p.status !== activeTab) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchCode = p.code.toLowerCase().includes(q);
-      const matchName = p.name.toLowerCase().includes(q);
-      if (!matchCode && !matchName) return false;
-    }
-    if (filters.syncStatus === 'synced' && !p.isSynced) return false;
-    if (filters.syncStatus === 'unsynced' && p.isSynced) return false;
-    if (filters.stageName !== 'all') {
-      const hasStageInProgress = p.samples?.some(s => s.stages.some(st => st.name === filters.stageName && st.status === 'in_progress'));
-      if (!hasStageInProgress) return false;
-    }
-    return true;
-  });
+  const filteredProducts = useMemo(() => {
+    return products.filter((p: Product) => {
+      if (p.status !== activeTab) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchCode = p.code.toLowerCase().includes(q);
+        const matchName = p.name.toLowerCase().includes(q);
+        if (!matchCode && !matchName) return false;
+      }
+      if (filters.syncStatus === 'synced' && !p.isSynced) return false;
+      if (filters.syncStatus === 'unsynced' && p.isSynced) return false;
+      if (filters.stageName !== 'all') {
+        const hasStageInProgress = p.samples?.some(s => s.stages.some(st => st.name === filters.stageName && st.status === 'in_progress'));
+        if (!hasStageInProgress) return false;
+      }
+      return true;
+    });
+  }, [products, activeTab, searchQuery, filters]);
 
   // 刷新数据
   const refreshData = async () => {
@@ -259,7 +270,7 @@ export default function Dashboard() {
         refreshDicts();
       }
     } catch (error) {
-      console.error("Refresh failed:", error);
+      logger.error("Refresh failed:", error);
     }
   };
 
@@ -267,10 +278,10 @@ export default function Dashboard() {
   useEffect(() => {
     const handleCheckConnection = async () => {
       if (connectedInfo.isConnected) {
-        console.log("[App] 页面聚焦，检查外部系统连接状态...");
+        logger.debug("[App] 页面聚焦，检查外部系统连接状态...");
         const info = await getConnectedInfo();
         if (!info.isConnected) {
-          console.log("[App] 连接已失效，切换至登录视图");
+          logger.info("[App] 连接已失效，切换至登录视图");
           setConnectedInfo(info);
           // 可以选择是否强制刷新页面以清理所有缓存状态
           // window.location.reload(); 
@@ -413,7 +424,7 @@ export default function Dashboard() {
       setNewProductFieldInput({ label: "", value: "" }); 
       setNewProductStages([]);
     } catch (error: any) {
-      console.error("Save failed:", error);
+      logger.error("Save failed:", error);
       alert("保存失败，原因可能是：\n1. 图片文件太大，超出了服务器限制\n2. 网络连接超时\n\n请尝试换一张较小的图片测试，或检查服务器日志。");
     } finally {
       setIsSubmitting(false);
@@ -557,7 +568,7 @@ export default function Dashboard() {
         alert("保存失败：" + (res.message || "未知错误"));
       }
     } catch (error) {
-      console.error("Save node info failed:", error);
+      logger.error("Save node info failed:", error);
       alert("网络异常，保存可能未成功，请刷新检查。");
     } finally {
       setIsSubmitting(false);
@@ -575,7 +586,7 @@ export default function Dashboard() {
       await refreshData();
       setActiveSampleId(newSampleId);
     } catch (error) {
-      console.error("Add sample failed:", error);
+      logger.error("Add sample failed:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -595,7 +606,7 @@ export default function Dashboard() {
         }
       }
     } catch (error) {
-      console.error("Delete sample failed:", error);
+      logger.error("Delete sample failed:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -618,7 +629,7 @@ export default function Dashboard() {
         setActiveSampleId("");
       }
     } catch (error) {
-      console.error("Delete product failed:", error);
+      logger.error("Delete product failed:", error);
     } finally {
       setIsSubmitting(false);
     }
@@ -690,6 +701,7 @@ export default function Dashboard() {
         setSearchQuery={setSearchQuery}
         onSelectProduct={handleSelectProduct}
         onCreateOpen={handleCreateOpen}
+        onReportOpen={() => setIsReportModalOpen(true)}
         isFilterOpen={isFilterOpen}
         setIsFilterOpen={setIsFilterOpen}
         filters={filters}
@@ -871,7 +883,7 @@ export default function Dashboard() {
               // 后台静默同步，不阻塞 UI
               updateStageTemplateOrder(newItems);
             } catch (err) {
-              console.error("排序同步失败:", err);
+              logger.error("排序同步失败:", err);
             }
           }}
         />
@@ -910,6 +922,15 @@ export default function Dashboard() {
         <ConnectModal 
           onClose={() => setIsConnectModalOpen(false)}
           onConnect={handleConnect}
+        />
+      )}
+
+      {isReportModalOpen && (
+        <DailyReportModal 
+          onClose={() => setIsReportModalOpen(false)}
+          onFetchReport={getDailyReport}
+          onFetchStageTrend={getStageTrendReport}
+          availableStages={uniqueStageNames}
         />
       )}
     </div>

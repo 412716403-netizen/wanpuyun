@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Link, ShieldCheck, AlertCircle } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface ConnectModalProps {
   onClose: () => void;
@@ -19,7 +20,7 @@ export const ConnectModal = ({ onClose, onConnect }: ConnectModalProps) => {
         const { company, username } = JSON.parse(savedInfo);
         setFormData(prev => ({ ...prev, company, username }));
       } catch (e) {
-        console.error("解析登录缓存失败", e);
+        logger.error("解析登录缓存失败", e);
       }
     }
   }, []);

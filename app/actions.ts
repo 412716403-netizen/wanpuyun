@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { Product, StageStatus } from '@/types'
 import { cookies } from 'next/headers'
+import { logger } from '@/lib/logger'
 
 // 将 Prisma 的数据格式转换为前端定义的类型格式
 function mapProduct(dbProduct: any): Product {
@@ -112,7 +113,7 @@ export async function externalLogin(company: string, user: string, pass: string)
 
       // 尝试获取经办人姓名
       try {
-        console.log("[Login] 正在尝试获取经办人姓名...");
+        logger.debug("[Login] 正在尝试获取经办人姓名...");
         const homeRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact.html`, {
           headers: { 'Cookie': sessionCookie },
           timeout: 5000
@@ -121,10 +122,10 @@ export async function externalLogin(company: string, user: string, pass: string)
         // 匹配 <cite>...管理员 </cite> 结构，支持图片头像和空白字符
         const citeMatch = html.match(/<cite>[\s\S]*?<\/img>\s*([\s\S]*?)\s*<\/cite>/);
         const realName = citeMatch ? citeMatch[1].trim() : user;
-        console.log(`[Login] 成功获取经办人: ${realName}`);
+        logger.info(`[Login] 成功获取经办人: ${realName}`);
         cookieStore.set('connected_user_name', realName, { path: '/', maxAge: 60 * 60 * 24 * 7 });
       } catch (nameError) {
-        console.error("[Login] 获取经办人姓名失败:", nameError);
+        logger.error("[Login] 获取经办人姓名失败:", nameError);
         cookieStore.set('connected_user_name', user, { path: '/', maxAge: 60 * 60 * 24 * 7 });
       }
 
@@ -132,7 +133,7 @@ export async function externalLogin(company: string, user: string, pass: string)
     }
     return { success: false, message: result.message || "登录失败" };
   } catch (error) { 
-    console.error("[Login] Connection failed or timeout:", error);
+    logger.error("[Login] Connection failed or timeout:", error);
     return { success: false, message: "连接生产系统超时或异常，请检查网络" }; 
   }
 }
@@ -150,7 +151,7 @@ export async function getExternalColors() {
       'Cookie': sessionCookie 
     };
 
-    console.log("[InitData] 开始从外部系统拉取颜色字典...");
+    logger.debug("[InitData] 开始从外部系统拉取颜色字典...");
     const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { 
       method: 'POST', 
       headers, 
@@ -159,10 +160,10 @@ export async function getExternalColors() {
     });
     const result = await response.json();
     const colors = (result.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
-    console.log(`[InitData] 颜色拉取完成: ${colors.length} 条`);
+    logger.info(`[InitData] 颜色拉取完成: ${colors.length} 条`);
     return colors;
   } catch (error) {
-    console.error("[InitData] 颜色拉取异常:", error);
+    logger.error("[InitData] 颜色拉取异常:", error);
     return [];
   }
 }
@@ -180,7 +181,7 @@ export async function getExternalSizes() {
       'Cookie': sessionCookie 
     };
 
-    console.log("[InitData] 开始从外部系统拉取尺码字典...");
+    logger.debug("[InitData] 开始从外部系统拉取尺码字典...");
     const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { 
       method: 'POST', 
       headers, 
@@ -189,10 +190,10 @@ export async function getExternalSizes() {
     });
     const result = await response.json();
     const sizes = (result.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
-    console.log(`[InitData] 尺码拉取完成: ${sizes.length} 条`);
+    logger.info(`[InitData] 尺码拉取完成: ${sizes.length} 条`);
     return sizes;
   } catch (error) {
-    console.error("[InitData] 尺码拉取异常:", error);
+    logger.error("[InitData] 尺码拉取异常:", error);
     return [];
   }
 }
@@ -210,7 +211,7 @@ export async function getExternalMaterials() {
       'Cookie': sessionCookie 
     };
 
-    console.log("[InitData] 开始从外部系统拉取物料字典...");
+    logger.debug("[InitData] 开始从外部系统拉取物料字典...");
     const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/list-data.html`, { 
       method: 'POST', 
       headers, 
@@ -226,10 +227,10 @@ export async function getExternalMaterials() {
       unit: (item.unit_name === '千克' || item.unit_name === 'kg') ? '克' : (item.unit_name || ""),
       type: item.type?.replace(/<[^>]+>/g, '') || "" 
     }));
-    console.log(`[InitData] 物料拉取完成: ${materials.length} 条`);
+    logger.info(`[InitData] 物料拉取完成: ${materials.length} 条`);
     return materials;
   } catch (error) {
-    console.error("[InitData] 物料拉取异常:", error);
+    logger.error("[InitData] 物料拉取异常:", error);
     return [];
   }
 }
@@ -288,7 +289,7 @@ export async function syncProductToExternal(productId: string) {
           remoteImagePath = uploadResult.file;
         }
       } catch (uploadError) {
-        console.error("[Sync] 图片上传失败:", uploadError);
+        logger.error("[Sync] 图片上传失败:", uploadError);
       }
     }
 
@@ -372,7 +373,7 @@ export async function syncProductToExternal(productId: string) {
     }
 
   } catch (error) {
-    console.error("[Sync] Exception:", error);
+    logger.error("[Sync] Exception:", error);
     return { success: false, message: "同步过程发生异常" };
   }
 }
@@ -385,7 +386,7 @@ export async function getExternalUnits() {
     const sessionCookie = cookieStore.get('external_session_cookie')?.value;
     if (!sessionCookie) return [];
 
-    console.log("[InitData] 开始从 HTML 提取单位字典...");
+    logger.debug("[InitData] 开始从 HTML 提取单位字典...");
     const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/add.html?platform=H5`, {
       method: 'GET',
       headers: { 'Cookie': sessionCookie },
@@ -405,10 +406,10 @@ export async function getExternalUnits() {
         }
       });
     }
-    console.log(`[InitData] 单位拉取完成: ${units.length} 条`);
+    logger.info(`[InitData] 单位拉取完成: ${units.length} 条`);
     return units;
   } catch (error) {
-    console.error("[InitData] 单位拉取异常:", error);
+    logger.error("[InitData] 单位拉取异常:", error);
     return [];
   }
 }
@@ -436,7 +437,7 @@ export async function addMaterial(params: {
       unit_id: params.unit_id || '0'
     });
 
-    console.log(`[MaterialAdd] 开始创建原料: 名称=${params.name}, 类型=${params.type}`);
+    logger.debug(`[MaterialAdd] 开始创建原料: 名称=${params.name}, 类型=${params.type}`);
 
     const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/add.html`, {
       method: 'POST',
@@ -455,7 +456,7 @@ export async function addMaterial(params: {
       return { success: false, message: result.message || "增加失败" };
     }
   } catch (error) { 
-    console.error("[MaterialAdd] 发生异常:", error);
+    logger.error("[MaterialAdd] 发生异常:", error);
     return { success: false, message: "系统连接异常" }; 
   }
 }
@@ -469,7 +470,7 @@ export async function addDictItem(type: string, name: string) {
     const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
     if (sessionCookie) headers['Cookie'] = sessionCookie;
 
-    console.log(`[DictAdd] 开始创建字典项: 类型=${type}(${typeMap[type]}), 名称=${name}`);
+    logger.debug(`[DictAdd] 开始创建字典项: 类型=${type}(${typeMap[type]}), 名称=${name}`);
 
     const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/add.html`, {
       method: 'POST',
@@ -480,14 +481,14 @@ export async function addDictItem(type: string, name: string) {
     
     const result = await response.json();
     if (result.error === 0) {
-      console.log(`[DictAdd] 创建成功: ${name}`);
+      logger.info(`[DictAdd] 创建成功: ${name}`);
       return true;
     } else {
-      console.error(`[DictAdd] 创建失败: ${result.message || '未知错误'}`);
+      logger.error(`[DictAdd] 创建失败: ${result.message || '未知错误'}`);
       return false;
     }
   } catch (error) { 
-    console.error("[DictAdd] 发生异常:", error);
+    logger.error("[DictAdd] 发生异常:", error);
     return false; 
   }
 }
@@ -524,7 +525,7 @@ export async function getConnectedInfo() {
       html.includes('请先登录') ||
       html.includes('fact/admin/login')
     ) {
-      console.log("[Verify] 确认 Session 已失效，正在清理本地凭证...");
+      logger.info("[Verify] 确认 Session 已失效，正在清理本地凭证...");
       cookieStore.delete('external_token');
       cookieStore.delete('external_session_cookie');
       cookieStore.delete('connected_company');
@@ -532,7 +533,7 @@ export async function getConnectedInfo() {
       return { isConnected: false, company: "", userName: "" };
     }
   } catch (e) {
-    console.error("[Verify] 验证连接状态失败 (网络问题):", e);
+    logger.error("[Verify] 验证连接状态失败 (网络问题):", e);
   }
 
   // 默认保持现状，除非明确检测到登录页
@@ -551,18 +552,18 @@ export async function disconnectExternal() {
 // 获取所有款式列表 (瘦身版：不包含阶段附件的 Base64 数据)
 export async function getProducts() {
   const startTime = Date.now();
-  console.log("[getProducts] 正在刷新列表..."); 
+  logger.debug("[getProducts] 正在刷新列表..."); 
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('external_token')?.value;
     const tenantId = cookieStore.get('connected_company')?.value;
 
     if (!token || !tenantId) {
-      console.log("[getProducts] 未连接，不返回任何数据");
+      logger.debug("[getProducts] 未连接，不返回任何数据");
       return [];
     }
 
-    console.log(`[getProducts] 开始极简列表查询, 租户=${tenantId}...`);
+    logger.debug(`[getProducts] 开始极简列表查询, 租户=${tenantId}...`);
     const dbProducts = await prisma.product.findMany({
       where: { tenantId },
       select: {
@@ -590,11 +591,11 @@ export async function getProducts() {
     })
     
     const duration = Date.now() - startTime;
-    console.log(`[getProducts] 查询完成, 数量=${dbProducts.length}, 耗时=${duration}ms`);
+    logger.perf(`[getProducts] 查询完成, 数量=${dbProducts.length}`, startTime);
     
     return dbProducts.map(mapProduct)
   } catch (error) {
-    console.error("[getProducts] 查询失败:", error);
+    logger.error("[getProducts] 查询失败:", error);
     return [];
   }
 }
@@ -602,7 +603,7 @@ export async function getProducts() {
 // 获取仪表盘初始数据 (极致优化：不再预取详情，只取列表)
 export async function getInitialData() {
   const startTime = Date.now();
-  console.log("[getInitialData] 开始合并加载基础数据...");
+  logger.debug("[getInitialData] 开始合并加载基础数据...");
   
   try {
     const [products, templates, connectedInfo] = await Promise.all([
@@ -611,14 +612,14 @@ export async function getInitialData() {
       getConnectedInfo()
     ]);
     
-    console.log(`[getInitialData] 基础数据获取完成, 耗时=${Date.now() - startTime}ms`);
+    logger.perf("[getInitialData] 基础数据获取完成", startTime);
     return {
       products,
       templates,
       connectedInfo
     };
   } catch (error) {
-    console.error("[getInitialData] 失败:", error);
+    logger.error("[getInitialData] 失败:", error);
     return null;
   }
 }
@@ -644,7 +645,7 @@ export async function getProductDetail(productId: string) {
     });
     return dbProduct ? mapProduct(dbProduct) : null;
   } catch (error) {
-    console.error("[getProductDetail] 失败:", error);
+    logger.error("[getProductDetail] 失败:", error);
     return null;
   }
 }
@@ -1010,7 +1011,197 @@ export async function updateStageInfo(params: {
       }
     };
   } catch (error) {
-    console.error("[updateStageInfo] Error:", error);
+    logger.error("[updateStageInfo] Error:", error);
     return { success: false, message: error instanceof Error ? error.message : "更新失败" };
+  }
+}
+
+// 获取每日进度报表
+export async function getDailyReport(dateStr: string) {
+  try {
+    const cookieStore = await cookies();
+    const tenantId = cookieStore.get('connected_company')?.value;
+    
+    if (!tenantId) {
+      return [];
+    }
+
+    // 解析日期并设置为当天的起止时间
+    const targetDate = new Date(dateStr);
+    const dayStart = new Date(targetDate.setHours(0, 0, 0, 0));
+    const dayEnd = new Date(targetDate.setHours(23, 59, 59, 999));
+
+    logger.debug(`[getDailyReport] 查询日期: ${dateStr}, 范围: ${dayStart} ~ ${dayEnd}`);
+
+    // 查询该日期内所有状态变更为 completed 的日志
+    const completionLogs = await prisma.log.findMany({
+      where: {
+        time: {
+          gte: dayStart,
+          lte: dayEnd
+        },
+        detail: {
+          contains: '已完成'
+        }
+      },
+      include: {
+        sample: {
+          include: {
+            product: true
+          }
+        }
+      },
+      orderBy: {
+        time: 'desc'
+      }
+    });
+
+    // 从日志中提取节点名称并分组
+    const reportMap = new Map<string, any[]>();
+
+    for (const log of completionLogs) {
+      // 过滤掉不属于当前租户的记录
+      if (!log.sample?.product || log.sample.product.tenantId !== tenantId) continue;
+
+      // 从日志详情中提取节点名称
+      const nodeMatch = log.detail.match(/节点:\s*(.+?)\n/);
+      const stageName = nodeMatch ? nodeMatch[1].trim() : '未知节点';
+
+      if (!reportMap.has(stageName)) {
+        reportMap.set(stageName, []);
+      }
+
+      // 检查是否已经添加过该款式（避免重复）
+      const existing = reportMap.get(stageName)!.find(
+        item => item.productId === log.sample.product!.id && item.sampleId === log.sample.id
+      );
+
+      if (!existing) {
+        reportMap.get(stageName)!.push({
+          productId: log.sample.product.id,
+          sampleId: log.sample.id,
+          productCode: log.sample.product.code,
+          productName: log.sample.product.name,
+          sampleName: log.sample.name,
+          completedAt: log.time.toLocaleString('zh-CN', { hour12: false }),
+          operator: log.user
+        });
+      }
+    }
+
+    // 转换为数组格式
+    const report = Array.from(reportMap.entries()).map(([stageName, products]) => ({
+      stageName,
+      count: products.length,
+      products
+    }));
+
+    logger.info(`[getDailyReport] 查询完成, 共 ${report.length} 个节点, ${completionLogs.length} 条记录`);
+
+    return report;
+  } catch (error) {
+    logger.error("[getDailyReport] 查询失败:", error);
+    return [];
+  }
+}
+
+// 获取节点趋势报表 - 查看某个节点在过去N天的完成情况
+export async function getStageTrendReport(stageName: string, days = 30) {
+  try {
+    const cookieStore = await cookies();
+    const tenantId = cookieStore.get('connected_company')?.value;
+    
+    if (!tenantId) {
+      return [];
+    }
+
+    // 计算起止时间
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(23, 59, 59, 999);
+
+    logger.debug(`[getStageTrendReport] 查询节点: ${stageName}, 范围: ${days}天`);
+
+    // 查询该节点在该时间段内的所有完成记录
+    const completionLogs = await prisma.log.findMany({
+      where: {
+        time: {
+          gte: startDate,
+          lte: endDate
+        },
+        detail: {
+          contains: `节点: ${stageName}`
+        },
+        AND: {
+          detail: {
+            contains: '已完成'
+          }
+        }
+      },
+      include: {
+        sample: {
+          include: {
+            product: true
+          }
+        }
+      },
+      orderBy: {
+        time: 'desc'
+      }
+    });
+
+    // 按日期分组统计
+    const dailyMap = new Map<string, {
+      date: string;
+      count: number;
+      products: { code: string; name: string; sampleName: string; time: string }[];
+    }>();
+
+    for (const log of completionLogs) {
+      // 过滤掉不属于当前租户的记录
+      if (!log.sample?.product || log.sample.product.tenantId !== tenantId) continue;
+
+      // 提取日期（YYYY-MM-DD 格式）
+      const dateKey = log.time.toISOString().split('T')[0];
+      
+      if (!dailyMap.has(dateKey)) {
+        dailyMap.set(dateKey, {
+          date: dateKey,
+          count: 0,
+          products: []
+        });
+      }
+
+      const dayData = dailyMap.get(dateKey)!;
+      
+      // 检查是否已经添加过该款式（避免重复）
+      const existing = dayData.products.find(
+        p => p.code === log.sample.product!.code && p.sampleName === log.sample.name
+      );
+
+      if (!existing) {
+        dayData.count++;
+        dayData.products.push({
+          code: log.sample.product.code,
+          name: log.sample.product.name,
+          sampleName: log.sample.name,
+          time: log.time.toLocaleString('zh-CN', { hour12: false })
+        });
+      }
+    }
+
+    // 转换为数组并按日期倒序排列
+    const trendData = Array.from(dailyMap.values()).sort((a, b) => {
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+
+    logger.info(`[getStageTrendReport] 查询完成, 共 ${trendData.length} 天有数据`);
+
+    return trendData;
+  } catch (error) {
+    logger.error("[getStageTrendReport] 查询失败:", error);
+    return [];
   }
 }

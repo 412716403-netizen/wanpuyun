@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Filter, Image as ImageIcon, X, Link, Link2Off } from "lucide-react";
+import { Plus, Search, Filter, Image as ImageIcon, X, Link, Link2Off, BarChart3 } from "lucide-react";
 import { Product } from "@/types";
 
 interface ProductSidebarProps {
@@ -12,6 +12,7 @@ interface ProductSidebarProps {
   setSearchQuery: (q: string) => void;
   onSelectProduct: (id: string) => void;
   onCreateOpen: () => void;
+  onReportOpen: () => void;
   isFilterOpen: boolean;
   setIsFilterOpen: (open: boolean) => void;
   filters: any;
@@ -32,6 +33,7 @@ export const ProductSidebar = ({
   setSearchQuery,
   onSelectProduct,
   onCreateOpen,
+  onReportOpen,
   isFilterOpen,
   setIsFilterOpen,
   filters,
@@ -69,13 +71,22 @@ export const ProductSidebar = ({
         )}
       </div>
 
-      <button 
-        onClick={onCreateOpen}
-        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 active:scale-[0.98] transition-all"
-      >
-        <Plus className="w-4 h-4" />
-        录入新款式
-      </button>
+      <div className="flex gap-2">
+        <button 
+          onClick={onCreateOpen}
+          className="flex-[3] bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 active:scale-[0.98] transition-all"
+        >
+          <Plus className="w-4 h-4" />
+          录入新款式
+        </button>
+        <button 
+          onClick={onReportOpen}
+          className="flex-1 bg-white border-2 border-slate-100 hover:border-indigo-100 text-slate-400 hover:text-indigo-600 rounded-2xl flex items-center justify-center transition-all shadow-sm"
+          title="每日进度报表"
+        >
+          <BarChart3 className="w-5 h-5" />
+        </button>
+      </div>
     </div>
 
     <div className="px-6 py-4 flex gap-2">
