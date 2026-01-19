@@ -11,6 +11,19 @@ export const ConnectModal = ({ onClose, onConnect }: ConnectModalProps) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // 加载缓存的登录信息
+  React.useEffect(() => {
+    const savedInfo = localStorage.getItem('last_login_info');
+    if (savedInfo) {
+      try {
+        const { company, username } = JSON.parse(savedInfo);
+        setFormData(prev => ({ ...prev, company, username }));
+      } catch (e) {
+        console.error("解析登录缓存失败", e);
+      }
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.company || !formData.username || !formData.password) {
@@ -25,6 +38,11 @@ export const ConnectModal = ({ onClose, onConnect }: ConnectModalProps) => {
       if (!result.success) {
         setError(result.message || "登录失败，请检查信息是否正确");
       } else {
+        // 成功后保存公司和用户名
+        localStorage.setItem('last_login_info', JSON.stringify({
+          company: formData.company,
+          username: formData.username
+        }));
         onClose();
       }
     } catch (err) {
@@ -59,6 +77,7 @@ export const ConnectModal = ({ onClose, onConnect }: ConnectModalProps) => {
                 value={formData.company} 
                 onChange={(e) => setFormData({...formData, company: e.target.value})}
                 placeholder="请输入公司全称" 
+                autoComplete="organization"
                 className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all" 
               />
             </div>
@@ -69,6 +88,7 @@ export const ConnectModal = ({ onClose, onConnect }: ConnectModalProps) => {
                 value={formData.username} 
                 onChange={(e) => setFormData({...formData, username: e.target.value})}
                 placeholder="请输入账号" 
+                autoComplete="username"
                 className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all" 
               />
             </div>
@@ -79,6 +99,7 @@ export const ConnectModal = ({ onClose, onConnect }: ConnectModalProps) => {
                 value={formData.password} 
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
                 placeholder="请输入密码" 
+                autoComplete="current-password"
                 className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/10 transition-all" 
               />
             </div>

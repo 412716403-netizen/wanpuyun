@@ -41,13 +41,13 @@ function mapProduct(dbProduct: any): Product {
         user: l.user,
         action: l.action,
         detail: l.detail,
-        time: l.time.toLocaleString(),
+        time: l.time.toLocaleString('zh-CN', { hour12: false }),
       })) || [],
       stages: s.stages.map((st: any) => ({
         id: st.id,
         name: st.name,
         status: st.status as StageStatus,
-        updatedAt: st.updatedAt ? st.updatedAt.toLocaleDateString() : "",
+        updatedAt: st.updatedAt ? st.updatedAt.toLocaleString('zh-CN', { hour12: false }) : "",
         fields: st.fields?.map((f: any) => ({
           id: f.id,
           label: f.label,
@@ -497,6 +497,45 @@ export async function getConnectedInfo() {
   const company = cookieStore.get('connected_company')?.value;
   const token = cookieStore.get('external_token')?.value;
   const userName = cookieStore.get('connected_user_name')?.value;
+  const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+
+  if (!token || !sessionCookie) {
+    return { isConnected: false, company: "", userName: "" };
+  }
+
+  // 增强校验：实时验证外部 Session 是否有效
+  try {
+    const res = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact.html`, {
+      headers: { 'Cookie': sessionCookie },
+      timeout: 5000 
+    });
+    const html = await res.text();
+    
+    // 核心判定逻辑：
+    // 1. 如果包含 logout.html，说明处于登录状态，直接返回正常
+    if (html.includes('logout.html')) {
+      return { isConnected: true, company: company || "", userName: userName || "" };
+    }
+
+    // 2. 如果不包含 logout.html，且包含以下任一特征，说明已掉线
+    if (
+      html.includes('fact/admin/login.html') || 
+      html.includes('login-box') || 
+      html.includes('请先登录') ||
+      html.includes('fact/admin/login')
+    ) {
+      console.log("[Verify] 确认 Session 已失效，正在清理本地凭证...");
+      cookieStore.delete('external_token');
+      cookieStore.delete('external_session_cookie');
+      cookieStore.delete('connected_company');
+      cookieStore.delete('connected_user_name');
+      return { isConnected: false, company: "", userName: "" };
+    }
+  } catch (e) {
+    console.error("[Verify] 验证连接状态失败 (网络问题):", e);
+  }
+
+  // 默认保持现状，除非明确检测到登录页
   return { isConnected: !!token, company: company || "", userName: userName || "" };
 }
 
@@ -893,7 +932,7 @@ export async function updateStageInfo(params: {
   stageId: string,
   status: StageStatus,
   fields: { label: string, value: string, type: string }[],
-  attachments: { fileName: string, fileUrl: string }[],
+  attachments: { id?: string, fileName: string, fileUrl: string }[],
   sampleId: string,
   userName: string, // 保留参数名以兼容前端调用，但内部改用 Cookie
   logDetail: string
@@ -926,12 +965,12 @@ export async function updateStageInfo(params: {
       });
     }
     
-    // 3. 处理附件：删除不在列表中的附件
-    const currentFileNames = params.attachments.map(a => a.fileName);
+    // 3. 处理附件：删除不在当前列表中的附件 (使用 ID 判定，防止同名文件删除失败)
+    const currentIds = params.attachments.map(a => a.id).filter(id => id && !id.startsWith('att-')) as string[];
     await prisma.attachment.deleteMany({
       where: {
         stageId: params.stageId,
-        fileName: { notIn: currentFileNames }
+        id: { notIn: currentIds }
       }
     });
 
@@ -967,7 +1006,7 @@ export async function updateStageInfo(params: {
         user: newLog.user,
         action: newLog.action,
         detail: newLog.detail,
-        time: newLog.time.toLocaleString()
+        time: newLog.time.toLocaleString('zh-CN', { hour12: false })
       }
     };
   } catch (error) {

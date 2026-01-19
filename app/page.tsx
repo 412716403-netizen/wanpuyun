@@ -83,17 +83,19 @@ export default function Dashboard() {
         setConnectedInfo(connInfo);
         
         if (productsData.length > 0) {
-          const firstProduct = productsData[0];
-          setSelectedProductId(firstProduct.id);
-          if (firstProduct.samples && firstProduct.samples.length > 0) {
-            setActiveSampleId(firstProduct.samples[0].id);
+          // 优先选择第一个处于“进行中”的产品，如果没有，则选列表第一个
+          const firstDeveloping = productsData.find(p => p.status === 'developing') || productsData[0];
+          
+          setSelectedProductId(firstDeveloping.id);
+          if (firstDeveloping.samples && firstDeveloping.samples.length > 0) {
+            setActiveSampleId(firstDeveloping.samples[0].id);
           }
           
-          // 首页渲染后，立即异步请求第一个款式的详情
+          // 首页渲染后，立即异步请求该款式的详情
           setDetailLoading(true);
-          getProductDetail(firstProduct.id).then(fullProduct => {
+          getProductDetail(firstDeveloping.id).then(fullProduct => {
             if (fullProduct) {
-              setProducts(prev => prev.map(p => p.id === firstProduct.id ? fullProduct : p));
+              setProducts(prev => prev.map(p => p.id === firstDeveloping.id ? fullProduct : p));
             }
           }).finally(() => {
             setDetailLoading(false);
@@ -231,10 +233,17 @@ export default function Dashboard() {
   // 刷新数据
   const refreshData = async () => {
     try {
-      const [productsData, templatesData] = await Promise.all([
+      const [productsData, templatesData, connInfo] = await Promise.all([
         getProducts(),
-        getStageTemplates()
+        getStageTemplates(),
+        getConnectedInfo()
       ]);
+      
+      // 如果连接状态发生变化，更新状态
+      if (connInfo.isConnected !== connectedInfo.isConnected) {
+        setConnectedInfo(connInfo);
+      }
+
       setProducts(productsData);
       setTemplates(templatesData);
       
@@ -246,13 +255,42 @@ export default function Dashboard() {
         }
       }
 
-      if (connectedInfo.isConnected) {
+      if (connInfo.isConnected) {
         refreshDicts();
       }
     } catch (error) {
       console.error("Refresh failed:", error);
     }
   };
+
+  // 监听窗口聚焦或休眠唤醒
+  useEffect(() => {
+    const handleCheckConnection = async () => {
+      if (connectedInfo.isConnected) {
+        console.log("[App] 页面聚焦，检查外部系统连接状态...");
+        const info = await getConnectedInfo();
+        if (!info.isConnected) {
+          console.log("[App] 连接已失效，切换至登录视图");
+          setConnectedInfo(info);
+          // 可以选择是否强制刷新页面以清理所有缓存状态
+          // window.location.reload(); 
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleCheckConnection);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleCheckConnection();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleCheckConnection);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [connectedInfo.isConnected]);
 
   // --- Handlers ---
   const handleSelectProduct = async (id: string) => {
@@ -449,8 +487,9 @@ export default function Dashboard() {
         sampleId,
         status: tempStatus,
         fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
-        // 优化点：只发送新增附件的 Base64 数据，但保留所有附件的文件名用于后端同步
+        // 优化点：发送 id 以便后端精准删除，只发送新增附件的 Base64 数据
         attachments: tempAttachments.map(a => ({ 
+          id: a.id,
           fileName: a.fileName, 
           fileUrl: a.fileUrl.startsWith('data:') ? a.fileUrl : "" 
         })),
@@ -466,11 +505,15 @@ export default function Dashboard() {
               ...p,
               samples: p.samples.map(s => {
                 if (s.id === sampleId) {
+                  // 找到当前操作的节点索引
+                  const currentStageIdx = s.stages.findIndex(st => st.id === stageId);
+                  
                   return {
                     ...s,
                     // 将新日志插到最前面
                     logs: res.newLog ? [res.newLog, ...s.logs] : s.logs,
-                    stages: s.stages.map(st => {
+                    stages: s.stages.map((st, idx) => {
+                      // 更新当前编辑的节点
                       if (st.id === stageId) {
                         return {
                           ...st,
@@ -483,7 +526,9 @@ export default function Dashboard() {
                             value: f.value
                           })),
                           attachments: (updatedStage!.attachments || []).map((a: any) => {
-                            const localMatch = tempAttachments.find(la => la.fileName === a.fileName);
+                            // 优先通过 id 匹配，如果匹配不到（如后端新创建的），再尝试通过文件名匹配
+                            const localMatch = tempAttachments.find(la => la.id === a.id) || 
+                                             tempAttachments.find(la => la.fileName === a.fileName && la.id.startsWith('att-'));
                             return {
                               id: a.id,
                               fileName: a.fileName,
@@ -492,6 +537,12 @@ export default function Dashboard() {
                           })
                         };
                       }
+                      
+                      // 自动流转逻辑：如果当前保存为“已完成”，则将下一个“待开始”的节点设为“进行中”
+                      if (tempStatus === 'completed' && idx === currentStageIdx + 1 && st.status === 'pending') {
+                        return { ...st, status: 'in_progress' as StageStatus };
+                      }
+
                       return st;
                     })
                   };
@@ -795,14 +846,33 @@ export default function Dashboard() {
           isSubmitting={isSubmitting}
           templates={templates}
           onDeleteTemplate={async (id) => {
-            await deleteStageTemplate(id);
-            const updated = await getStageTemplates();
-            setTemplates(updated);
+            if (!confirm("确定要删除此模板吗？")) return;
+            // 乐观更新：先从 UI 中移除
+            const oldTemplates = [...templates];
+            setTemplates(templates.filter(t => t.id !== id));
+            try {
+              await deleteStageTemplate(id);
+            } catch (err) {
+              setTemplates(oldTemplates);
+              alert("删除失败");
+            }
           }}
           onUpdateTemplateOrder={async (newItems) => {
-            await updateStageTemplateOrder(newItems);
-            const updated = await getStageTemplates();
-            setTemplates(updated);
+            // 乐观更新：立即反映顺序变化
+            // 将 newItems (id, order) 映射回完整的 templates 对象数组
+            const orderedTemplates = [...newItems]
+              .sort((a, b) => a.order - b.order)
+              .map(item => templates.find(t => t.id === item.id))
+              .filter(Boolean) as { id: string, name: string }[];
+            
+            setTemplates(orderedTemplates);
+            
+            try {
+              // 后台静默同步，不阻塞 UI
+              updateStageTemplateOrder(newItems);
+            } catch (err) {
+              console.error("排序同步失败:", err);
+            }
           }}
         />
       )}

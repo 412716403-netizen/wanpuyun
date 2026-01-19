@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Plus, ChevronUp, ChevronDown, Image as ImageIcon, Search, Check, Trash2, ArrowRight, Settings2, Hash, Layers, Palette, ListFilter, CheckCircle2 } from "lucide-react";
+import { X, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Image as ImageIcon, Search, Check, Trash2, ArrowRight, Settings2, Hash, Layers, Palette, ListFilter, CheckCircle2 } from "lucide-react";
 import { ProductCustomField, YarnUsage } from "@/types";
 
 interface CreateProductModalProps {
@@ -282,7 +282,7 @@ const SelectionModal = ({
                 onClick={() => setIsAddingMaterial(true)}
                 className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-slate-800 transition-all flex items-center gap-2 shrink-0"
               >
-                <Plus className="w-4 h-4" /> 极速新增物料
+                <Plus className="w-4 h-4" /> 新增物料
               </button>
             ) : onAdd && search.trim() && !options.some(o => o.name === search.trim()) && (
               <button 
@@ -573,8 +573,8 @@ export const CreateProductModal = ({
                 <div className="space-y-3 max-h-[220px] overflow-y-auto no-scrollbar">
                   {newProduct.customFields.map(field => (
                     <div key={field.id} className="bg-white rounded-xl flex items-center border border-slate-100 group/field relative h-11 shadow-sm overflow-hidden">
-                      <input className="w-[80px] bg-slate-50 h-full px-3 text-xs font-bold text-slate-400 rounded-l-xl border-r border-slate-100 outline-none focus:bg-white transition-colors" value={field.label} onChange={(e) => onUpdateCustomField(field.id, 'label', e.target.value)} />
-                      <input className="flex-1 px-4 text-sm font-bold text-slate-700 outline-none bg-transparent" value={field.value} onChange={(e) => onUpdateCustomField(field.id, 'value', e.target.value)} />
+                      <input className="w-[80px] shrink-0 bg-slate-50 h-full px-3 text-xs font-bold text-slate-400 rounded-l-xl border-r border-slate-100 outline-none focus:bg-white transition-colors" value={field.label} onChange={(e) => onUpdateCustomField(field.id, 'label', e.target.value)} />
+                      <input className="flex-1 min-w-0 px-4 text-sm font-bold text-slate-700 outline-none bg-transparent" value={field.value} onChange={(e) => onUpdateCustomField(field.id, 'value', e.target.value)} />
                       <button onClick={() => onRemoveCustomField(field.id)} className="absolute right-2 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover/field:opacity-100 transition-all shrink-0"><X className="w-4 h-4" /></button>
                     </div>
                   ))}
@@ -746,45 +746,58 @@ export const CreateProductModal = ({
                     {templates.map((t, idx) => (
                       <div 
                         key={t.id} 
-                        className={`group relative transition-all ${draggedTemplateId === t.id ? 'opacity-30 scale-95' : 'opacity-100'}`}
-                        draggable
-                        onDragStart={(e) => {
-                          setDraggedTemplateId(t.id);
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = "move";
-                        }}
-                        onDrop={async (e) => {
-                          e.preventDefault();
-                          if (!draggedTemplateId || draggedTemplateId === t.id) return;
-                          
-                          const newTemplates = [...templates];
-                          const draggedIdx = newTemplates.findIndex(item => item.id === draggedTemplateId);
-                          const [removed] = newTemplates.splice(draggedIdx, 1);
-                          newTemplates.splice(idx, 0, removed);
-                          
-                          if (onUpdateTemplateOrder) {
-                            const updates = newTemplates.map((item, index) => ({ id: item.id, order: index }));
-                            await onUpdateTemplateOrder(updates);
-                          }
-                          setDraggedTemplateId(null);
-                        }}
-                        onDragEnd={() => setDraggedTemplateId(null)}
+                        className="group relative transition-all"
                       >
                         <button 
                           onClick={() => onAddStage(t.name)} 
-                          className="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-[11px] font-bold text-slate-600 hover:border-indigo-400 hover:text-indigo-600 shadow-sm transition-all active:scale-95 cursor-move"
+                          className="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-[11px] font-bold text-slate-600 hover:border-indigo-400 hover:text-indigo-600 shadow-sm transition-all active:scale-95"
                         >
                           {t.name}
                         </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); if(confirm(`确定要从系统常用节点中删除“${t.name}”吗？`)) onDeleteTemplate(t.id); }}
-                          className="absolute -right-1.5 -top-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-600 z-10"
-                        >
-                          <X className="w-2.5 h-2.5" />
-                        </button>
+                        
+                        {/* 操作按键区 */}
+                        <div className="absolute -right-2 -top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                          {/* 左移按钮 */}
+                          {idx > 0 && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newItems = [...templates];
+                                [newItems[idx], newItems[idx-1]] = [newItems[idx-1], newItems[idx]];
+                                onUpdateTemplateOrder?.(newItems.map((it, i) => ({ id: it.id, order: i })));
+                              }}
+                              className="w-5 h-5 bg-white border border-slate-200 text-slate-400 rounded-full flex items-center justify-center shadow-sm hover:text-indigo-600 hover:border-indigo-600 transition-all"
+                              title="向左移动"
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                            </button>
+                          )}
+                          
+                          {/* 右移按钮 */}
+                          {idx < templates.length - 1 && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newItems = [...templates];
+                                [newItems[idx], newItems[idx+1]] = [newItems[idx+1], newItems[idx]];
+                                onUpdateTemplateOrder?.(newItems.map((it, i) => ({ id: it.id, order: i })));
+                              }}
+                              className="w-5 h-5 bg-white border border-slate-200 text-slate-400 rounded-full flex items-center justify-center shadow-sm hover:text-indigo-600 hover:border-indigo-600 transition-all"
+                              title="向右移动"
+                            >
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          )}
+                          
+                          {/* 删除按钮 */}
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onDeleteTemplate(t.id); }}
+                            className="w-5 h-5 bg-white border border-slate-200 text-slate-400 rounded-full flex items-center justify-center shadow-sm hover:text-red-500 hover:border-red-500 transition-all"
+                            title="从常用节点中删除"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
