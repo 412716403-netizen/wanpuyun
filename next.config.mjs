@@ -5,6 +5,13 @@ const nextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '100mb',
+      // 允许这些域名调用 Server Actions（解决 iframe 跨域登录问题）
+      allowedOrigins: [
+        'zjerp.lengdo.com',
+        'kaifa.wanpuxx.com',
+        'www.wanpuxx.com',
+        'localhost:3000',
+      ],
     },
   },
   
