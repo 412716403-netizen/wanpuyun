@@ -68,6 +68,32 @@ function mapProduct(dbProduct: any): Product {
 // 外部接口配置
 const EXTERNAL_API_BASE_URL = "https://www.wanpuxx.com"; 
 
+export type SessionInfo = {
+  token: string;
+  sessionCookie: string;
+  company: string;
+  userName: string;
+}
+
+// 辅助函数：获取会话信息（优先从参数获取，其次从 Cookie 获取）
+async function getSession(providedSession?: SessionInfo): Promise<SessionInfo | null> {
+  if (providedSession && providedSession.token && providedSession.sessionCookie) {
+    return providedSession;
+  }
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get('external_token')?.value;
+  const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+  const company = cookieStore.get('connected_company')?.value || "";
+  const userName = cookieStore.get('connected_user_name')?.value || "";
+
+  if (token && sessionCookie) {
+    return { token, sessionCookie, company, userName };
+  }
+
+  return null;
+}
+
 // 辅助函数：带超时的 fetch
 async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number }) {
   const { timeout = 10000 } = options; // 默认 10 秒超时
@@ -120,6 +146,7 @@ export async function externalLogin(company: string, user: string, pass: string)
       cookieStore.set('connected_company', company, cookieOptions);
 
       // 尝试获取经办人姓名
+      let realName = user;
       try {
         logger.debug("[Login] 正在尝试获取经办人姓名...");
         const homeRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact.html`, {
@@ -129,7 +156,9 @@ export async function externalLogin(company: string, user: string, pass: string)
         const html = await homeRes.text();
         // 匹配 <cite>...管理员 </cite> 结构，支持图片头像和空白字符
         const citeMatch = html.match(/<cite>[\s\S]*?<\/img>\s*([\s\S]*?)\s*<\/cite>/);
-        const realName = citeMatch ? citeMatch[1].trim() : user;
+        if (citeMatch) {
+          realName = citeMatch[1].trim();
+        }
         logger.info(`[Login] 成功获取经办人: ${realName}`);
         cookieStore.set('connected_user_name', realName, cookieOptions);
       } catch (nameError) {
@@ -137,7 +166,16 @@ export async function externalLogin(company: string, user: string, pass: string)
         cookieStore.set('connected_user_name', user, cookieOptions);
       }
 
-      return { success: true, message: "连接成功" };
+      return { 
+        success: true, 
+        message: "连接成功",
+        session: {
+          token: cookieStore.get('external_token')?.value || "",
+          sessionCookie: sessionCookie,
+          company: company,
+          userName: realName
+        }
+      };
     }
     return { success: false, message: result.message || "登录失败" };
   } catch (error) { 
@@ -147,16 +185,15 @@ export async function externalLogin(company: string, user: string, pass: string)
 }
 
 // 获取颜色字典 (Type: 3)
-export async function getExternalColors() {
+export async function getExternalColors(sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return [];
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
-    if (!sessionCookie) return [];
+    const session = await getSession(sessionInfo);
+    if (!session) return [];
 
     const headers: Record<string, string> = { 
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': sessionCookie 
+      'Cookie': session.sessionCookie 
     };
 
     logger.debug("[InitData] 开始从外部系统拉取颜色字典...");
@@ -177,16 +214,15 @@ export async function getExternalColors() {
 }
 
 // 获取尺码字典 (Type: 2)
-export async function getExternalSizes() {
+export async function getExternalSizes(sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return [];
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
-    if (!sessionCookie) return [];
+    const session = await getSession(sessionInfo);
+    if (!session) return [];
 
     const headers: Record<string, string> = { 
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': sessionCookie 
+      'Cookie': session.sessionCookie 
     };
 
     logger.debug("[InitData] 开始从外部系统拉取尺码字典...");
@@ -207,16 +243,15 @@ export async function getExternalSizes() {
 }
 
 // 获取物料字典 (Materials)
-export async function getExternalMaterials() {
+export async function getExternalMaterials(sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return [];
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
-    if (!sessionCookie) return [];
+    const session = await getSession(sessionInfo);
+    if (!session) return [];
 
     const headers: Record<string, string> = { 
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': sessionCookie 
+      'Cookie': session.sessionCookie 
     };
 
     logger.debug("[InitData] 开始从外部系统拉取物料字典...");
@@ -244,22 +279,21 @@ export async function getExternalMaterials() {
 }
 
 // 保持原函数名以兼容旧代码，但改为调用上面的具体函数
-export async function getGoodsInitData() {
+export async function getGoodsInitData(sessionInfo?: SessionInfo) {
   const [colors, sizes, materials] = await Promise.all([
-    getExternalColors(),
-    getExternalSizes(),
-    getExternalMaterials()
+    getExternalColors(sessionInfo),
+    getExternalSizes(sessionInfo),
+    getExternalMaterials(sessionInfo)
   ]);
   return { colors, sizes, materials };
 }
 
-export async function syncProductToExternal(productId: string) {
+export async function syncProductToExternal(productId: string, sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return { success: false, message: "请配置域名" };
   
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
-    if (!sessionCookie) return { success: false, message: "请先连接生产系统" };
+    const session = await getSession(sessionInfo);
+    if (!session) return { success: false, message: "请先连接生产系统" };
 
     // 1. 获取本地商品完整数据和外部物料字典
     const [product, initData] = await Promise.all([
@@ -267,7 +301,7 @@ export async function syncProductToExternal(productId: string) {
         where: { id: productId },
         include: { yarnUsages: true, customFields: true }
       }),
-      getGoodsInitData()
+      getGoodsInitData(sessionInfo)
     ]);
 
     if (!product || !initData) return { success: false, message: "数据加载失败" };
@@ -288,7 +322,7 @@ export async function syncProductToExternal(productId: string) {
         
         const uploadRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/product/upload-product-album.html`, {
           method: 'POST',
-          headers: { 'Cookie': sessionCookie },
+          headers: { 'Cookie': session.sessionCookie },
           body: formData,
           timeout: 30000 // 图片上传给 30 秒
         });
@@ -361,7 +395,7 @@ export async function syncProductToExternal(productId: string) {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': sessionCookie,
+        'Cookie': session.sessionCookie,
         'Referer': `${EXTERNAL_API_BASE_URL}/fact/product/add.html`,
         'X-Requested-With': 'XMLHttpRequest'
       },
@@ -387,17 +421,16 @@ export async function syncProductToExternal(productId: string) {
 }
 
 // 获取单位字典
-export async function getExternalUnits() {
+export async function getExternalUnits(sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return [];
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
-    if (!sessionCookie) return [];
+    const session = await getSession(sessionInfo);
+    if (!session) return [];
 
     logger.debug("[InitData] 开始从 HTML 提取单位字典...");
     const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/add.html?platform=H5`, {
       method: 'GET',
-      headers: { 'Cookie': sessionCookie },
+      headers: { 'Cookie': session.sessionCookie },
       timeout: 10000
     });
     const html = await response.text();
@@ -429,12 +462,11 @@ export async function addMaterial(params: {
   color: string,
   spec: string,
   unit_id?: string
-}) {
+}, sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return { success: false, message: "请配置域名" };
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
-    if (!sessionCookie) return { success: false, message: "请先连接生产系统" };
+    const session = await getSession(sessionInfo);
+    if (!session) return { success: false, message: "请先连接生产系统" };
 
     const bodyParams = new URLSearchParams({
       platform: 'H5',
@@ -451,7 +483,7 @@ export async function addMaterial(params: {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': sessionCookie
+        'Cookie': session.sessionCookie
       },
       body: bodyParams.toString(),
       timeout: 10000
@@ -469,14 +501,13 @@ export async function addMaterial(params: {
   }
 }
 
-export async function addDictItem(type: string, name: string) {
+export async function addDictItem(type: string, name: string, sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return false;
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+    const session = await getSession(sessionInfo);
     const typeMap: Record<string, string> = { 'color': '3', 'size': '2', 'material': '1' };
     const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    if (sessionCookie) headers['Cookie'] = sessionCookie;
+    if (session?.sessionCookie) headers['Cookie'] = session.sessionCookie;
 
     logger.debug(`[DictAdd] 开始创建字典项: 类型=${type}(${typeMap[type]}), 名称=${name}`);
 
@@ -501,21 +532,17 @@ export async function addDictItem(type: string, name: string) {
   }
 }
 
-export async function getConnectedInfo() {
-  const cookieStore = await cookies();
-  const company = cookieStore.get('connected_company')?.value;
-  const token = cookieStore.get('external_token')?.value;
-  const userName = cookieStore.get('connected_user_name')?.value;
-  const sessionCookie = cookieStore.get('external_session_cookie')?.value;
+export async function getConnectedInfo(sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
 
-  if (!token || !sessionCookie) {
+  if (!session) {
     return { isConnected: false, company: "", userName: "" };
   }
 
   // 增强校验：实时验证外部 Session 是否有效
   try {
     const res = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact.html`, {
-      headers: { 'Cookie': sessionCookie },
+      headers: { 'Cookie': session.sessionCookie },
       timeout: 5000 
     });
     const html = await res.text();
@@ -523,7 +550,7 @@ export async function getConnectedInfo() {
     // 核心判定逻辑：
     // 1. 如果包含 logout.html，说明处于登录状态，直接返回正常
     if (html.includes('logout.html')) {
-      return { isConnected: true, company: company || "", userName: userName || "" };
+      return { isConnected: true, company: session.company || "", userName: session.userName || "" };
     }
 
     // 2. 如果不包含 logout.html，且包含以下任一特征，说明已掉线
@@ -534,6 +561,7 @@ export async function getConnectedInfo() {
       html.includes('fact/admin/login')
     ) {
       logger.info("[Verify] 确认 Session 已失效，正在清理本地凭证...");
+      const cookieStore = await cookies();
       cookieStore.delete('external_token');
       cookieStore.delete('external_session_cookie');
       cookieStore.delete('connected_company');
@@ -545,7 +573,7 @@ export async function getConnectedInfo() {
   }
 
   // 默认保持现状，除非明确检测到登录页
-  return { isConnected: !!token, company: company || "", userName: userName || "" };
+  return { isConnected: !!session.token, company: session.company || "", userName: session.userName || "" };
 }
 
 export async function disconnectExternal() {
@@ -558,19 +586,18 @@ export async function disconnectExternal() {
 }
 
 // 获取所有款式列表 (瘦身版：不包含阶段附件的 Base64 数据)
-export async function getProducts() {
+export async function getProducts(sessionInfo?: SessionInfo) {
   const startTime = Date.now();
   logger.debug("[getProducts] 正在刷新列表..."); 
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('external_token')?.value;
-    const tenantId = cookieStore.get('connected_company')?.value;
+    const session = await getSession(sessionInfo);
 
-    if (!token || !tenantId) {
+    if (!session || !session.token || !session.company) {
       logger.debug("[getProducts] 未连接，不返回任何数据");
       return [];
     }
 
+    const tenantId = session.company;
     logger.debug(`[getProducts] 开始极简列表查询, 租户=${tenantId}...`);
     const dbProducts = await prisma.product.findMany({
       where: { tenantId },
@@ -609,15 +636,15 @@ export async function getProducts() {
 }
 
 // 获取仪表盘初始数据 (极致优化：不再预取详情，只取列表)
-export async function getInitialData() {
+export async function getInitialData(sessionInfo?: SessionInfo) {
   const startTime = Date.now();
   logger.debug("[getInitialData] 开始合并加载基础数据...");
   
   try {
     const [products, templates, connectedInfo] = await Promise.all([
-      getProducts(),
-      getStageTemplates(),
-      getConnectedInfo()
+      getProducts(sessionInfo),
+      getStageTemplates(sessionInfo),
+      getConnectedInfo(sessionInfo)
     ]);
     
     logger.perf("[getInitialData] 基础数据获取完成", startTime);
@@ -633,10 +660,13 @@ export async function getInitialData() {
 }
 
 // 获取单个款式的完整详情 (包含附件的 Base64 数据)
-export async function getProductDetail(productId: string) {
+export async function getProductDetail(productId: string, sessionInfo?: SessionInfo) {
   try {
+    const session = await getSession(sessionInfo);
+    const tenantId = session?.company || "default";
+
     const dbProduct = await prisma.product.findUnique({
-      where: { id: productId },
+      where: { id_tenantId: { id: productId, tenantId } },
       include: {
         customFields: true,
         yarnUsages: true,
@@ -658,31 +688,29 @@ export async function getProductDetail(productId: string) {
   }
 }
 
-export async function getStageTemplates() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get('external_token')?.value;
-  const tenantId = cookieStore.get('connected_company')?.value;
+export async function getStageTemplates(sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
   
-  if (!token || !tenantId) return [];
+  if (!session || !session.token || !session.company) return [];
   
   return await prisma.stageTemplate.findMany({ 
-    where: { tenantId },
+    where: { tenantId: session.company },
     orderBy: { order: 'asc' } 
   })
 }
 
-export async function deleteStageTemplate(id: string) {
-  const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+export async function deleteStageTemplate(id: string, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
   await prisma.stageTemplate.delete({ 
     where: { id_tenantId: { id, tenantId } } 
   })
   revalidatePath('/')
 }
 
-export async function updateStageTemplateOrder(items: { id: string, order: number }[]) {
-  const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+export async function updateStageTemplateOrder(items: { id: string, order: number }[], sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
   
   // 使用 transaction 批量更新
   await prisma.$transaction(
@@ -705,9 +733,9 @@ export async function createProduct(data: {
   thumbnail?: string,
   customFields: { label: string, value: string }[],
   stages: string[]
-}) {
-  const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+}, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
 
   // 检查款号或品名是否重复
   const existing = await prisma.product.findFirst({
@@ -799,9 +827,9 @@ export async function updateProduct(id: string, data: {
   image?: string,
   thumbnail?: string,
   customFields: { label: string, value: string }[]
-}) {
-  const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+}, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
 
   // 检查款号或品名是否与其他款式重复
   const existing = await prisma.product.findFirst({
@@ -869,7 +897,7 @@ export async function updateProduct(id: string, data: {
   return { success: true, product: updatedProduct ? mapProduct(updatedProduct) : null };
 }
 
-export async function createSampleVersion(productId: string, name: string) {
+export async function createSampleVersion(productId: string, name: string, sessionInfo?: SessionInfo) {
   const lastSample = await prisma.sampleVersion.findFirst({
     where: { productId },
     orderBy: { createdAt: 'desc' },
@@ -888,8 +916,8 @@ export async function createSampleVersion(productId: string, name: string) {
       }
     }
   })
-  const cookieStore = await cookies();
-  const userName = cookieStore.get('connected_user_name')?.value || '未知用户';
+  const session = await getSession(sessionInfo);
+  const userName = session?.userName || '未知用户';
 
   await prisma.log.create({
     data: {
@@ -903,14 +931,14 @@ export async function createSampleVersion(productId: string, name: string) {
   return newSample.id
 }
 
-export async function deleteSampleVersion(sampleId: string) {
+export async function deleteSampleVersion(sampleId: string, sessionInfo?: SessionInfo) {
   await prisma.sampleVersion.delete({ where: { id: sampleId } })
   revalidatePath('/')
 }
 
-export async function toggleProductStatus(id: string, currentStatus: string) {
-  const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+export async function toggleProductStatus(id: string, currentStatus: string, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
   await prisma.product.update({
     where: { id_tenantId: { id, tenantId } },
     data: { status: currentStatus === 'developing' ? 'archived' : 'developing' }
@@ -918,9 +946,9 @@ export async function toggleProductStatus(id: string, currentStatus: string) {
   revalidatePath('/')
 }
 
-export async function toggleSyncStatus(id: string, currentSync: boolean) {
-  const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+export async function toggleSyncStatus(id: string, currentSync: boolean, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
   await prisma.product.update({
     where: { id_tenantId: { id, tenantId } },
     data: { isSynced: !currentSync }
@@ -928,9 +956,9 @@ export async function toggleSyncStatus(id: string, currentSync: boolean) {
   revalidatePath('/')
 }
 
-export async function deleteProduct(id: string) {
-  const cookieStore = await cookies();
-  const tenantId = cookieStore.get('connected_company')?.value || "default";
+export async function deleteProduct(id: string, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
   await prisma.product.delete({ 
     where: { id_tenantId: { id, tenantId } } 
   })
@@ -943,12 +971,12 @@ export async function updateStageInfo(params: {
   fields: { label: string, value: string, type: string }[],
   attachments: { id?: string, fileName: string, fileUrl: string }[],
   sampleId: string,
-  userName: string, // 保留参数名以兼容前端调用，但内部改用 Cookie
+  userName: string, // 保留参数名以兼容前端调用，但内部改用 Cookie 或传入的 sessionInfo
   logDetail: string
-}): Promise<{ success: boolean; message?: string; stage?: any; newLog?: any }> {
+}, sessionInfo?: SessionInfo): Promise<{ success: boolean; message?: string; stage?: any; newLog?: any }> {
   try {
-    const cookieStore = await cookies();
-    const realUserName = cookieStore.get('connected_user_name')?.value || params.userName || '未知用户';
+    const session = await getSession(sessionInfo);
+    const realUserName = session?.userName || params.userName || '未知用户';
 
     // 1. 更新阶段基本信息
     const updatedStage = await prisma.stage.update({
@@ -1025,10 +1053,10 @@ export async function updateStageInfo(params: {
 }
 
 // 获取每日进度报表
-export async function getDailyReport(dateStr: string) {
+export async function getDailyReport(dateStr: string, sessionInfo?: SessionInfo) {
   try {
-    const cookieStore = await cookies();
-    const tenantId = cookieStore.get('connected_company')?.value;
+    const session = await getSession(sessionInfo);
+    const tenantId = session?.company;
     
     if (!tenantId) {
       return [];
@@ -1114,10 +1142,10 @@ export async function getDailyReport(dateStr: string) {
 }
 
 // 获取节点趋势报表 - 查看某个节点在过去N天的完成情况
-export async function getStageTrendReport(stageName: string, days = 30) {
+export async function getStageTrendReport(stageName: string, days = 30, sessionInfo?: SessionInfo) {
   try {
-    const cookieStore = await cookies();
-    const tenantId = cookieStore.get('connected_company')?.value;
+    const session = await getSession(sessionInfo);
+    const tenantId = session?.company;
     
     if (!tenantId) {
       return [];

@@ -34,7 +34,8 @@ import {
   getExternalUnits,
   addMaterial,
   getDailyReport,
-  getStageTrendReport
+  getStageTrendReport,
+  type SessionInfo
 } from "./actions";
 import { Plus, Link as LinkIcon, ShieldCheck } from "lucide-react";
 import { 
@@ -63,6 +64,7 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [connectedInfo, setConnectedInfo] = useState({ isConnected: false, company: "", userName: "" });
+  const [sessionInfo, setSessionInfo] = useState<SessionInfo | undefined>(undefined);
 
   // 初始化加载数据
   useEffect(() => {
@@ -71,7 +73,19 @@ export default function Dashboard() {
       const startTime = Date.now();
       
       try {
-        const data = await getInitialData();
+        // 方案 B：优先从 localStorage 读取会话信息，绕过 iframe Cookie 限制
+        const savedSession = localStorage.getItem('wanpuyun_session');
+        let currentSession: SessionInfo | undefined = undefined;
+        if (savedSession) {
+          try {
+            currentSession = JSON.parse(savedSession);
+            setSessionInfo(currentSession);
+          } catch (e) {
+            logger.error("解析本地会话失败", e);
+          }
+        }
+
+        const data = await getInitialData(currentSession);
         
         if (!data) {
           setLoading(false);
@@ -97,7 +111,7 @@ export default function Dashboard() {
           
           // 首页渲染后，立即异步请求该款式的详情
           setDetailLoading(true);
-          getProductDetail(firstDeveloping.id).then(fullProduct => {
+          getProductDetail(firstDeveloping.id, currentSession).then(fullProduct => {
             if (fullProduct) {
               setProducts(prev => prev.map(p => p.id === firstDeveloping.id ? fullProduct : p));
             }
@@ -122,7 +136,7 @@ export default function Dashboard() {
     if (!connectedInfo.isConnected || colorDict.length > 0 || dictLoading.colors) return;
     setDictLoading(prev => ({ ...prev, colors: true }));
     try {
-      const data = await getExternalColors();
+      const data = await getExternalColors(sessionInfo);
       setColorDict(data);
     } finally {
       setDictLoading(prev => ({ ...prev, colors: false }));
@@ -133,7 +147,7 @@ export default function Dashboard() {
     if (!connectedInfo.isConnected || sizeDict.length > 0 || dictLoading.sizes) return;
     setDictLoading(prev => ({ ...prev, sizes: true }));
     try {
-      const data = await getExternalSizes();
+      const data = await getExternalSizes(sessionInfo);
       setSizeDict(data);
     } finally {
       setDictLoading(prev => ({ ...prev, sizes: false }));
@@ -144,7 +158,7 @@ export default function Dashboard() {
     if (!connectedInfo.isConnected || materialDict.length > 0 || dictLoading.materials) return;
     setDictLoading(prev => ({ ...prev, materials: true }));
     try {
-      const data = await getExternalMaterials();
+      const data = await getExternalMaterials(sessionInfo);
       setMaterialDict(data);
     } finally {
       setDictLoading(prev => ({ ...prev, materials: false }));
@@ -155,7 +169,7 @@ export default function Dashboard() {
     if (!connectedInfo.isConnected || unitDict.length > 0 || dictLoading.units) return;
     setDictLoading(prev => ({ ...prev, units: true }));
     try {
-      const data = await getExternalUnits();
+      const data = await getExternalUnits(sessionInfo);
       setUnitDict(data);
     } finally {
       setDictLoading(prev => ({ ...prev, units: false }));
@@ -167,10 +181,10 @@ export default function Dashboard() {
     setDictLoading({ colors: true, sizes: true, materials: true, units: true });
     try {
       const [c, s, m, u] = await Promise.all([
-        getExternalColors(), 
-        getExternalSizes(), 
-        getExternalMaterials(),
-        getExternalUnits()
+        getExternalColors(sessionInfo), 
+        getExternalSizes(sessionInfo), 
+        getExternalMaterials(sessionInfo),
+        getExternalUnits(sessionInfo)
       ]);
       setColorDict(c);
       setSizeDict(s);
@@ -245,9 +259,9 @@ export default function Dashboard() {
   const refreshData = async () => {
     try {
       const [productsData, templatesData, connInfo] = await Promise.all([
-        getProducts(),
-        getStageTemplates(),
-        getConnectedInfo()
+        getProducts(sessionInfo),
+        getStageTemplates(sessionInfo),
+        getConnectedInfo(sessionInfo)
       ]);
       
       // 如果连接状态发生变化，更新状态
@@ -260,7 +274,7 @@ export default function Dashboard() {
       
       // 如果当前有选中的产品，刷新它的详情
       if (selectedProductId) {
-        const fullProduct = await getProductDetail(selectedProductId);
+        const fullProduct = await getProductDetail(selectedProductId, sessionInfo);
         if (fullProduct) {
           setProducts(prev => prev.map(p => p.id === selectedProductId ? fullProduct : p));
         }
@@ -279,7 +293,7 @@ export default function Dashboard() {
     const handleCheckConnection = async () => {
       if (connectedInfo.isConnected) {
         logger.debug("[App] 页面聚焦，检查外部系统连接状态...");
-        const info = await getConnectedInfo();
+        const info = await getConnectedInfo(sessionInfo);
         if (!info.isConnected) {
           logger.info("[App] 连接已失效，切换至登录视图");
           setConnectedInfo(info);
@@ -317,7 +331,7 @@ export default function Dashboard() {
       if (!hasFullData) {
         setDetailLoading(true);
         try {
-          const fullProduct = await getProductDetail(id);
+          const fullProduct = await getProductDetail(id, sessionInfo);
           if (fullProduct) {
             setProducts(prev => prev.map(p => p.id === id ? fullProduct : p));
           }
@@ -330,7 +344,10 @@ export default function Dashboard() {
 
   const handleConnect = async (company: string, user: string, pass: string) => {
     const result = await externalLogin(company, user, pass);
-    if (result.success) {
+    if (result.success && result.session) {
+      // 方案 B：存储会话到 localStorage
+      localStorage.setItem('wanpuyun_session', JSON.stringify(result.session));
+      setSessionInfo(result.session);
       window.location.reload();
     }
     return result;
@@ -339,6 +356,8 @@ export default function Dashboard() {
   const handleDisconnect = async () => {
     if (confirm("确定要断开与生产系统的连接吗？")) {
       await disconnectExternal();
+      localStorage.removeItem('wanpuyun_session');
+      setSessionInfo(undefined);
       setConnectedInfo({ isConnected: false, company: "", userName: "" });
       setColorDict([]);
       setSizeDict([]);
@@ -378,7 +397,7 @@ export default function Dashboard() {
           image: newProduct.image,
           thumbnail: newProduct.thumbnail,
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value }))
-        });
+        }, sessionInfo);
         
         if (res && res.success && res.product) {
           const updatedProduct = res.product as Product;
@@ -400,7 +419,7 @@ export default function Dashboard() {
           thumbnail: newProduct.thumbnail,
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value })),
           stages: newProductStages
-        });
+        }, sessionInfo);
 
         if (!res.success) {
           alert(res.message);
@@ -506,7 +525,7 @@ export default function Dashboard() {
         })),
         userName: "Jun Zheng",
         logDetail: logDetail.trim()
-      });
+      }, sessionInfo);
 
       if (res && res.success && res.stage) {
         const updatedStage = res.stage;
@@ -582,7 +601,7 @@ export default function Dashboard() {
       const sampleNames = ["头样", "二样", "三样", "四样", "五样", "大货样"];
       const currentCount = selectedProduct.samples.length;
       const nextName = sampleNames[currentCount] || `${currentCount + 1}样`;
-      const newSampleId = await createSampleVersion(selectedProduct.id, nextName);
+      const newSampleId = await createSampleVersion(selectedProduct.id, nextName, sessionInfo);
       await refreshData();
       setActiveSampleId(newSampleId);
     } catch (error) {
@@ -596,8 +615,8 @@ export default function Dashboard() {
     if (!selectedProduct || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await deleteSampleVersion(sampleId);
-      const data = await getProducts();
+      await deleteSampleVersion(sampleId, sessionInfo);
+      const data = await getProducts(sessionInfo);
       setProducts(data);
       const currentProduct = data.find((p: Product) => p.id === selectedProductId);
       if (currentProduct && currentProduct.samples.length > 0) {
@@ -616,8 +635,8 @@ export default function Dashboard() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await deleteProduct(id);
-      const data = await getProducts();
+      await deleteProduct(id, sessionInfo);
+      const data = await getProducts(sessionInfo);
       setProducts(data);
       if (data.length > 0) {
         setSelectedProductId(data[0].id);
@@ -725,7 +744,7 @@ export default function Dashboard() {
             if (isSubmitting) return;
             setIsSubmitting(true);
             try {
-              const res = await syncProductToExternal(id);
+              const res = await syncProductToExternal(id, sessionInfo);
               if (res.success) {
                 alert("🎉 同步成功！商品已在生产管理系统中创建。");
                 await refreshData();
@@ -742,7 +761,7 @@ export default function Dashboard() {
             try {
               const p = products.find((product: Product) => product.id === id);
               if (p) {
-                await toggleProductStatus(id, p.status);
+                await toggleProductStatus(id, p.status, sessionInfo);
                 await refreshData();
               }
             } finally {
@@ -818,14 +837,14 @@ export default function Dashboard() {
           onFetchMaterials={loadMaterials}
           onFetchUnits={loadUnits}
           onAddMaterial={async (m) => {
-            const res = await addMaterial(m);
+            const res = await addMaterial(m, sessionInfo);
             if (res.success) {
               refreshDicts();
             }
             return res;
           }}
           onAddDictItem={async (type, name) => {
-            const ok = await addDictItem(type, name);
+            const ok = await addDictItem(type, name, sessionInfo);
             if (ok) {
               refreshDicts();
             }
@@ -863,7 +882,7 @@ export default function Dashboard() {
             const oldTemplates = [...templates];
             setTemplates(templates.filter(t => t.id !== id));
             try {
-              await deleteStageTemplate(id);
+              await deleteStageTemplate(id, sessionInfo);
             } catch (err) {
               setTemplates(oldTemplates);
               alert("删除失败");
@@ -881,7 +900,7 @@ export default function Dashboard() {
             
             try {
               // 后台静默同步，不阻塞 UI
-              updateStageTemplateOrder(newItems);
+              updateStageTemplateOrder(newItems, sessionInfo);
             } catch (err) {
               logger.error("排序同步失败:", err);
             }
@@ -928,8 +947,8 @@ export default function Dashboard() {
       {isReportModalOpen && (
         <DailyReportModal 
           onClose={() => setIsReportModalOpen(false)}
-          onFetchReport={getDailyReport}
-          onFetchStageTrend={getStageTrendReport}
+          onFetchReport={(date) => getDailyReport(date, sessionInfo)}
+          onFetchStageTrend={(stage, days) => getStageTrendReport(stage, days, sessionInfo)}
           availableStages={uniqueStageNames}
         />
       )}
