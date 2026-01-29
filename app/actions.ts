@@ -100,16 +100,24 @@ export async function externalLogin(company: string, user: string, pass: string)
     if (result.error === 0) {
       const cookieStore = await cookies();
       let sessionCookie = "";
+      
+      // Cookie 配置：使用宽松策略（适用于 HTTP 环境）
+      const cookieOptions = {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+        sameSite: 'lax' as const,
+      };
+      
       if (setCookieHeader) {
         const valid_cookies = setCookieHeader.split(/,(?=\s*[^,;]+=[^,;]+)/).map(c => c.trim().split(';')[0]).filter(c => !c.includes('=deleted'));
         if (valid_cookies.length > 0) {
           sessionCookie = valid_cookies.join('; ');
-          cookieStore.set('external_session_cookie', sessionCookie, { path: '/', maxAge: 60 * 60 * 24 * 7 });
+          cookieStore.set('external_session_cookie', sessionCookie, cookieOptions);
           const match = sessionCookie.match(/advanced-frontend-fact=([^;]+)/);
-          if (match) cookieStore.set('external_token', match[1], { path: '/', maxAge: 60 * 60 * 24 * 7 });
+          if (match) cookieStore.set('external_token', match[1], cookieOptions);
         }
       }
-      cookieStore.set('connected_company', company, { path: '/', maxAge: 60 * 60 * 24 * 7 });
+      cookieStore.set('connected_company', company, cookieOptions);
 
       // 尝试获取经办人姓名
       try {
@@ -123,10 +131,10 @@ export async function externalLogin(company: string, user: string, pass: string)
         const citeMatch = html.match(/<cite>[\s\S]*?<\/img>\s*([\s\S]*?)\s*<\/cite>/);
         const realName = citeMatch ? citeMatch[1].trim() : user;
         logger.info(`[Login] 成功获取经办人: ${realName}`);
-        cookieStore.set('connected_user_name', realName, { path: '/', maxAge: 60 * 60 * 24 * 7 });
+        cookieStore.set('connected_user_name', realName, cookieOptions);
       } catch (nameError) {
         logger.error("[Login] 获取经办人姓名失败:", nameError);
-        cookieStore.set('connected_user_name', user, { path: '/', maxAge: 60 * 60 * 24 * 7 });
+        cookieStore.set('connected_user_name', user, cookieOptions);
       }
 
       return { success: true, message: "连接成功" };
