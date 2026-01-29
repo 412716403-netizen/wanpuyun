@@ -15,17 +15,10 @@ const nextConfig = {
         // 针对所有路由
         source: '/:path*',
         headers: [
-          // 允许指定域名通过 iframe 嵌入
+          // 允许指定域名通过 iframe 嵌入（支持所有 wanpuxx.com 和 lengdo.com 子域名）
           {
             key: 'Content-Security-Policy',
-            value: "frame-ancestors 'self' http://zjerp.lengdo.com http://www.wanpuxx.com https://www.wanpuxx.com",
-          },
-          // CORS 跨域请求头（同时支持 HTTP 和 HTTPS）
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: process.env.NODE_ENV === 'production' 
-              ? 'http://www.wanpuxx.com' 
-              : 'http://zjerp.lengdo.com',
+            value: "frame-ancestors 'self' http://*.lengdo.com https://*.lengdo.com http://*.wanpuxx.com https://*.wanpuxx.com",
           },
           {
             key: 'Access-Control-Allow-Credentials',
