@@ -931,9 +931,57 @@ export async function createSampleVersion(productId: string, name: string, sessi
   return newSample.id
 }
 
-export async function deleteSampleVersion(sampleId: string, sessionInfo?: SessionInfo) {
-  await prisma.sampleVersion.delete({ where: { id: sampleId } })
-  revalidatePath('/')
+export async function deleteSampleVersion(sampleId: string, sessionInfo?: SessionInfo): Promise<{ success: boolean; error?: string }> {
+  // 查询样品详情，包括关联的阶段、字段和附件
+  const sample = await prisma.sampleVersion.findUnique({
+    where: { id: sampleId },
+    include: {
+      stages: {
+        include: {
+          fields: true,
+          attachments: true
+        }
+      }
+    }
+  });
+
+  if (!sample) {
+    return { success: false, error: '样品版本不存在' };
+  }
+
+  // 检查是否有已完成的阶段
+  const hasCompletedStages = sample.stages.some(
+    stage => stage.status === 'completed'
+  );
+
+  // 检查进行中的阶段数量（允许1个，因为默认第一个节点是进行中）
+  const inProgressCount = sample.stages.filter(
+    stage => stage.status === 'in_progress'
+  ).length;
+  const hasMultipleInProgressStages = inProgressCount > 1;
+
+  // 检查是否有附件
+  const hasAttachments = sample.stages.some(stage => stage.attachments.length > 0);
+
+  // 检查是否有填写的字段数据
+  const hasFieldData = sample.stages.some(
+    stage => stage.fields.some(f => f.value && f.value.trim() !== '')
+  );
+
+  // 如果包含重要数据，拒绝删除
+  if (hasCompletedStages || hasMultipleInProgressStages || hasAttachments || hasFieldData) {
+    const reasons: string[] = [];
+    if (hasCompletedStages) reasons.push('已完成的阶段');
+    if (hasMultipleInProgressStages) reasons.push('多个进行中的阶段');
+    if (hasAttachments) reasons.push('附件文件');
+    if (hasFieldData) reasons.push('已填写的数据');
+    
+    return { success: false, error: `无法删除"${sample.name}"，该样品包含：${reasons.join('、')}` };
+  }
+
+  await prisma.sampleVersion.delete({ where: { id: sampleId } });
+  revalidatePath('/');
+  return { success: true };
 }
 
 export async function toggleProductStatus(id: string, currentStatus: string, sessionInfo?: SessionInfo) {
@@ -991,6 +1039,25 @@ export async function updateStageInfo(params: {
     })
 
     // 2. 处理附件：只创建带数据的“新”附件
+    // 先删除不再需要的旧附件
+    const keepIds = params.attachments
+      .map(a => a.id)
+      .filter(id => id && !id.startsWith('att-')) as string[];
+    
+    if (keepIds.length > 0) {
+      await prisma.attachment.deleteMany({
+        where: {
+          stageId: params.stageId,
+          id: { notIn: keepIds }
+        }
+      });
+    } else {
+      await prisma.attachment.deleteMany({
+        where: { stageId: params.stageId }
+      });
+    }
+
+    // 再创建新附件
     const newAttachments = params.attachments.filter(a => a.fileUrl.startsWith('data:'));
     if (newAttachments.length > 0) {
       await prisma.attachment.createMany({
@@ -1001,15 +1068,6 @@ export async function updateStageInfo(params: {
         }))
       });
     }
-    
-    // 3. 处理附件：删除不在当前列表中的附件 (使用 ID 判定，防止同名文件删除失败)
-    const currentIds = params.attachments.map(a => a.id).filter(id => id && !id.startsWith('att-')) as string[];
-    await prisma.attachment.deleteMany({
-      where: {
-        stageId: params.stageId,
-        id: { notIn: currentIds }
-      }
-    });
 
     if (params.status === 'completed') {
       const nextStage = await prisma.stage.findFirst({
@@ -1024,14 +1082,12 @@ export async function updateStageInfo(params: {
       data: { sampleId: params.sampleId, user: realUserName, action: '更新状态/参数', detail: params.logDetail }
     })
     
-    // 关键优化：返回给前端的结果中，剔除沉重的 fileUrl (Base64)
+    // 返回完整的附件数据（包括 fileUrl），确保前端能正确显示
     const fullUpdatedStage = await prisma.stage.findUnique({
       where: { id: params.stageId },
       include: { 
         fields: true, 
-        attachments: {
-          select: { id: true, fileName: true, createdAt: true, stageId: true } // 不选 fileUrl
-        } 
+        attachments: true // 包含 fileUrl，确保数据一致性
       }
     });
     

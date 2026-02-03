@@ -253,7 +253,10 @@ const SelectionModal = ({
             <div className="flex flex-wrap gap-1.5">
               {selectedItems.length > 0 ? selectedItems.map(item => (
                 <div key={item!.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 text-white rounded-lg text-[11px] font-bold shadow-sm animate-in zoom-in-95">
-                  <span className="truncate max-w-[100px]">{item!.name}</span>
+                  <span className="truncate max-w-[160px]">
+                    {item!.color && <span className="opacity-70">【{item!.color}】</span>}
+                    {item!.name}
+                  </span>
                   <button onClick={() => toggleItem(item!.id)} className="hover:bg-indigo-50 rounded-full p-0.5 transition-colors">
                     <X className="w-2.5 h-2.5" />
                   </button>
@@ -492,7 +495,12 @@ export const CreateProductModal = ({
     const nextCurrentColorYarn = materialIds.map(mId => {
       const mInfo = materialDict.find(m => m.id === mId);
       const mName = mInfo?.name || "未知原料";
-      const existing = currentColorYarn.find(y => y.materialName === mName && y.specification === (mInfo?.spec || ""));
+      // 匹配时需要同时考虑名称、规格和原料颜色，以区分同名但不同色的物料
+      const existing = currentColorYarn.find(y => 
+        y.materialName === mName && 
+        y.specification === (mInfo?.spec || "") && 
+        y.materialColor === (mInfo?.color || "")
+      );
       if (existing) return existing;
       
       return {
@@ -870,7 +878,12 @@ export const CreateProductModal = ({
             type: m.type
           }))}
           selectedIds={Array.from(new Set(newProduct.yarnUsage.filter(y => y.color === activeColorForYarn).map(y => {
-            const mInfo = materialDict.find(m => m.name === y.materialName && m.spec === y.specification);
+            // 匹配时需要同时考虑名称、规格和原料颜色，以区分同名但不同色的物料
+            const mInfo = materialDict.find(m => 
+              m.name === y.materialName && 
+              m.spec === (y.specification || "") && 
+              m.color === (y.materialColor || "")
+            );
             return mInfo?.id || y.materialName;
           })))}
           onConfirm={confirmYarnMaterials}

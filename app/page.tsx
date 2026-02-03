@@ -517,11 +517,11 @@ export default function Dashboard() {
         sampleId,
         status: tempStatus,
         fields: finalFields.map(f => ({ label: f.label, value: f.value, type: 'text' })),
-        // 优化点：发送 id 以便后端精准删除，只发送新增附件的 Base64 数据
+        // 只有新增附件（id 以 att- 开头）才发送 Base64 数据，已存在的附件不重复发送
         attachments: tempAttachments.map(a => ({ 
           id: a.id,
           fileName: a.fileName, 
-          fileUrl: a.fileUrl.startsWith('data:') ? a.fileUrl : "" 
+          fileUrl: a.id.startsWith('att-') && a.fileUrl.startsWith('data:') ? a.fileUrl : "" 
         })),
         userName: "Jun Zheng",
         logDetail: logDetail.trim()
@@ -555,16 +555,11 @@ export default function Dashboard() {
                             type: f.type,
                             value: f.value
                           })),
-                          attachments: (updatedStage!.attachments || []).map((a: any) => {
-                            // 优先通过 id 匹配，如果匹配不到（如后端新创建的），再尝试通过文件名匹配
-                            const localMatch = tempAttachments.find(la => la.id === a.id) || 
-                                             tempAttachments.find(la => la.fileName === a.fileName && la.id.startsWith('att-'));
-                            return {
-                              id: a.id,
-                              fileName: a.fileName,
-                              fileUrl: localMatch ? localMatch.fileUrl : ""
-                            };
-                          })
+                          attachments: (updatedStage!.attachments || []).map((a: any) => ({
+                            id: a.id,
+                            fileName: a.fileName,
+                            fileUrl: a.fileUrl || ""  // 直接使用后端返回的 fileUrl
+                          }))
                         };
                       }
                       
@@ -615,7 +610,12 @@ export default function Dashboard() {
     if (!selectedProduct || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      await deleteSampleVersion(sampleId, sessionInfo);
+      const result = await deleteSampleVersion(sampleId, sessionInfo);
+      if (!result.success) {
+        // 显示错误提示给用户
+        alert(result.error || '删除失败，请稍后重试');
+        return;
+      }
       const data = await getProducts(sessionInfo);
       setProducts(data);
       const currentProduct = data.find((p: Product) => p.id === selectedProductId);
@@ -625,6 +625,7 @@ export default function Dashboard() {
         }
       }
     } catch (error) {
+      alert('删除失败，请稍后重试');
       logger.error("Delete sample failed:", error);
     } finally {
       setIsSubmitting(false);
