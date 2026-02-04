@@ -913,6 +913,12 @@ export default function Dashboard() {
 
       {isNodeModalOpen && editingStage && (
         <NodeInfoModal 
+          stageName={(() => {
+            const stage = selectedProduct?.samples
+              .find(s => s.id === editingStage.sampleId)?.stages
+              .find(st => st.id === editingStage.stageId);
+            return stage?.name || '执行详情';
+          })()}
           tempStatus={tempStatus}
           setTempStatus={setTempStatus}
           tempFields={tempFields}
@@ -994,8 +1000,22 @@ export default function Dashboard() {
             await refreshData();
           }}
           onMoveTemplate={async (id, direction) => {
-            await moveStageTemplate(id, direction, sessionInfo);
-            await refreshData();
+            // 乐观更新：先本地立即更新 UI
+            const currentIndex = templates.findIndex(t => t.id === id);
+            if (currentIndex === -1) return;
+            const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+            if (targetIndex < 0 || targetIndex >= templates.length) return;
+            
+            const newTemplates = [...templates];
+            [newTemplates[currentIndex], newTemplates[targetIndex]] = [newTemplates[targetIndex], newTemplates[currentIndex]];
+            // 更新 order 值
+            newTemplates.forEach((t, i) => t.order = i);
+            setTemplates(newTemplates);
+            
+            // 后台异步同步，不阻塞 UI
+            moveStageTemplate(id, direction, sessionInfo).catch(err => {
+              logger.error("节点排序同步失败:", err);
+            });
           }}
           onAddField={async (templateId, label, required) => {
             await addStageTemplateField(templateId, label, required, sessionInfo);
@@ -1010,8 +1030,29 @@ export default function Dashboard() {
             await refreshData();
           }}
           onMoveField={async (fieldId, direction) => {
-            await moveStageTemplateField(fieldId, direction, sessionInfo);
-            await refreshData();
+            // 乐观更新：先本地立即更新 UI
+            const templateIndex = templates.findIndex(t => t.fields.some(f => f.id === fieldId));
+            if (templateIndex === -1) return;
+            
+            const template = templates[templateIndex];
+            const currentIndex = template.fields.findIndex(f => f.id === fieldId);
+            if (currentIndex === -1) return;
+            const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+            if (targetIndex < 0 || targetIndex >= template.fields.length) return;
+            
+            const newFields = [...template.fields];
+            [newFields[currentIndex], newFields[targetIndex]] = [newFields[targetIndex], newFields[currentIndex]];
+            // 更新 order 值
+            newFields.forEach((f, i) => f.order = i);
+            
+            const newTemplates = [...templates];
+            newTemplates[templateIndex] = { ...template, fields: newFields };
+            setTemplates(newTemplates);
+            
+            // 后台异步同步，不阻塞 UI
+            moveStageTemplateField(fieldId, direction, sessionInfo).catch(err => {
+              logger.error("参数排序同步失败:", err);
+            });
           }}
         />
       )}

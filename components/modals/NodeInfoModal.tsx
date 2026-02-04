@@ -10,6 +10,7 @@ interface TemplateField {
 }
 
 interface NodeInfoModalProps {
+  stageName: string;  // 当前节点名称
   tempStatus: StageStatus;
   setTempStatus: (s: StageStatus) => void;
   tempFields: any[];
@@ -22,6 +23,7 @@ interface NodeInfoModalProps {
 }
 
 export const NodeInfoModal = ({
+  stageName,
   tempStatus,
   setTempStatus,
   tempFields,
@@ -129,7 +131,7 @@ export const NodeInfoModal = ({
           <div className="flex justify-between items-center mb-10">
             <div>
               <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-[0.2em] mb-2">节点信息登记</p>
-              <h3 className="text-3xl font-black text-slate-900 tracking-tighter">执行详情</h3>
+              <h3 className="text-3xl font-black text-slate-900 tracking-tighter">{stageName}</h3>
             </div>
             <button onClick={onClose} className="p-3 bg-slate-50 hover:bg-slate-100 rounded-2xl text-slate-400 transition-colors"><X className="w-6 h-6" /></button>
           </div>
