@@ -695,7 +695,12 @@ export async function getStageTemplates(sessionInfo?: SessionInfo) {
   
   return await prisma.stageTemplate.findMany({ 
     where: { tenantId: session.company },
-    orderBy: { order: 'asc' } 
+    orderBy: { order: 'asc' },
+    include: {
+      fields: {
+        orderBy: { order: 'asc' }
+      }
+    }
   })
 }
 
@@ -721,6 +726,195 @@ export async function updateStageTemplateOrder(items: { id: string, order: numbe
   );
   
   revalidatePath('/')
+}
+
+// 创建节点模板
+export async function createStageTemplate(name: string, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
+  
+  // 检查是否已存在同名节点
+  const existing = await prisma.stageTemplate.findUnique({
+    where: { tenantId_name: { tenantId, name } }
+  });
+  
+  if (existing) {
+    return { success: false, message: `节点"${name}"已存在` };
+  }
+  
+  // 获取当前最大 order
+  const maxOrder = await prisma.stageTemplate.findFirst({
+    where: { tenantId },
+    orderBy: { order: 'desc' },
+    select: { order: true }
+  });
+  
+  const newTemplate = await prisma.stageTemplate.create({
+    data: {
+      tenantId,
+      name,
+      order: (maxOrder?.order ?? -1) + 1
+    },
+    include: { fields: true }
+  });
+  
+  revalidatePath('/');
+  return { success: true, template: newTemplate };
+}
+
+// 更新节点模板名称
+export async function updateStageTemplateName(id: string, name: string, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
+  
+  // 检查是否已存在同名节点（排除自己）
+  const existing = await prisma.stageTemplate.findFirst({
+    where: { 
+      tenantId, 
+      name,
+      NOT: { id }
+    }
+  });
+  
+  if (existing) {
+    return { success: false, message: `节点"${name}"已存在` };
+  }
+  
+  await prisma.stageTemplate.update({
+    where: { id_tenantId: { id, tenantId } },
+    data: { name }
+  });
+  
+  revalidatePath('/');
+  return { success: true };
+}
+
+// 移动节点模板排序（上移/下移）
+export async function moveStageTemplate(id: string, direction: 'up' | 'down', sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  const tenantId = session?.company || "default";
+  
+  const templates = await prisma.stageTemplate.findMany({
+    where: { tenantId },
+    orderBy: { order: 'asc' }
+  });
+  
+  const currentIndex = templates.findIndex(t => t.id === id);
+  if (currentIndex === -1) return { success: false };
+  
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= templates.length) return { success: false };
+  
+  // 交换 order
+  const current = templates[currentIndex];
+  const target = templates[targetIndex];
+  
+  await prisma.$transaction([
+    prisma.stageTemplate.update({
+      where: { id_tenantId: { id: current.id, tenantId } },
+      data: { order: target.order }
+    }),
+    prisma.stageTemplate.update({
+      where: { id_tenantId: { id: target.id, tenantId } },
+      data: { order: current.order }
+    })
+  ]);
+  
+  revalidatePath('/');
+  return { success: true };
+}
+
+// 添加节点参数字段
+export async function addStageTemplateField(templateId: string, label: string, required: boolean, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  if (!session) return { success: false, message: '未登录' };
+  
+  // 获取当前最大 order
+  const maxOrder = await prisma.stageTemplateField.findFirst({
+    where: { templateId },
+    orderBy: { order: 'desc' },
+    select: { order: true }
+  });
+  
+  const field = await prisma.stageTemplateField.create({
+    data: {
+      templateId,
+      label,
+      required,
+      order: (maxOrder?.order ?? -1) + 1
+    }
+  });
+  
+  revalidatePath('/');
+  return { success: true, field };
+}
+
+// 更新节点参数字段
+export async function updateStageTemplateField(fieldId: string, label: string, required: boolean, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  if (!session) return { success: false, message: '未登录' };
+  
+  await prisma.stageTemplateField.update({
+    where: { id: fieldId },
+    data: { label, required }
+  });
+  
+  revalidatePath('/');
+  return { success: true };
+}
+
+// 删除节点参数字段
+export async function deleteStageTemplateField(fieldId: string, sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  if (!session) return { success: false, message: '未登录' };
+  
+  await prisma.stageTemplateField.delete({
+    where: { id: fieldId }
+  });
+  
+  revalidatePath('/');
+  return { success: true };
+}
+
+// 移动节点参数字段排序
+export async function moveStageTemplateField(fieldId: string, direction: 'up' | 'down', sessionInfo?: SessionInfo) {
+  const session = await getSession(sessionInfo);
+  if (!session) return { success: false };
+  
+  const field = await prisma.stageTemplateField.findUnique({
+    where: { id: fieldId }
+  });
+  
+  if (!field) return { success: false };
+  
+  const fields = await prisma.stageTemplateField.findMany({
+    where: { templateId: field.templateId },
+    orderBy: { order: 'asc' }
+  });
+  
+  const currentIndex = fields.findIndex(f => f.id === fieldId);
+  if (currentIndex === -1) return { success: false };
+  
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+  if (targetIndex < 0 || targetIndex >= fields.length) return { success: false };
+  
+  // 交换 order
+  const current = fields[currentIndex];
+  const target = fields[targetIndex];
+  
+  await prisma.$transaction([
+    prisma.stageTemplateField.update({
+      where: { id: current.id },
+      data: { order: target.order }
+    }),
+    prisma.stageTemplateField.update({
+      where: { id: target.id },
+      data: { order: current.order }
+    })
+  ]);
+  
+  revalidatePath('/');
+  return { success: true };
 }
 
 export async function createProduct(data: {

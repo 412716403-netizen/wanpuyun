@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Search, Filter, Image as ImageIcon, X, Link, Link2Off, BarChart3 } from "lucide-react";
+import { Plus, Search, Filter, Image as ImageIcon, X, Link, Link2Off, BarChart3, Settings2 } from "lucide-react";
 import { Product } from "@/types";
 
 interface ProductSidebarProps {
@@ -13,6 +13,7 @@ interface ProductSidebarProps {
   onSelectProduct: (id: string) => void;
   onCreateOpen: () => void;
   onReportOpen: () => void;
+  onStageTemplateOpen: () => void;
   isFilterOpen: boolean;
   setIsFilterOpen: (open: boolean) => void;
   filters: any;
@@ -34,6 +35,7 @@ export const ProductSidebar = ({
   onSelectProduct,
   onCreateOpen,
   onReportOpen,
+  onStageTemplateOpen,
   isFilterOpen,
   setIsFilterOpen,
   filters,
@@ -78,6 +80,13 @@ export const ProductSidebar = ({
         >
           <Plus className="w-4 h-4" />
           录入新款式
+        </button>
+        <button 
+          onClick={onStageTemplateOpen}
+          className="flex-1 bg-white border-2 border-slate-100 hover:border-indigo-100 text-slate-400 hover:text-indigo-600 rounded-2xl flex items-center justify-center transition-all shadow-sm"
+          title="节点管理"
+        >
+          <Settings2 className="w-5 h-5" />
         </button>
         <button 
           onClick={onReportOpen}

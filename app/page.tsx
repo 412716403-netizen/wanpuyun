@@ -8,6 +8,7 @@ import { NodeInfoModal } from "@/components/modals/NodeInfoModal";
 import { LogModal } from "@/components/modals/LogModal";
 import { ConnectModal } from "@/components/modals/ConnectModal";
 import { DailyReportModal } from "@/components/modals/DailyReportModal";
+import { StageTemplateModal } from "@/components/modals/StageTemplateModal";
 import { 
   getProducts, 
   getProductDetail,
@@ -20,6 +21,13 @@ import {
   getStageTemplates,
   deleteStageTemplate,
   updateStageTemplateOrder,
+  createStageTemplate,
+  updateStageTemplateName,
+  moveStageTemplate,
+  addStageTemplateField,
+  updateStageTemplateField,
+  deleteStageTemplateField,
+  moveStageTemplateField,
   createSampleVersion,
   deleteSampleVersion,
   deleteProduct,
@@ -50,7 +58,7 @@ import { logger } from "@/lib/logger";
 export default function Dashboard() {
   // --- States ---
   const [products, setProducts] = useState<Product[]>([]);
-  const [templates, setTemplates] = useState<{ id: string, name: string }[]>([]);
+  const [templates, setTemplates] = useState<{ id: string, name: string, order: number, fields: { id: string, label: string, required: boolean, order: number }[] }[]>([]);
   const [colorDict, setColorDict] = useState<{ id: string, name: string }[]>([]);
   const [sizeDict, setSizeDict] = useState<{ id: string, name: string }[]>([]);
   const [materialDict, setMaterialDict] = useState<{ id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[]>([]);
@@ -201,6 +209,7 @@ export default function Dashboard() {
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isStageTemplateModalOpen, setIsStageTemplateModalOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
@@ -209,7 +218,7 @@ export default function Dashboard() {
   const [tempFields, setTempFields] = useState<{ id: string, label: string, value: string }[]>([]);
   const [tempAttachments, setTempAttachments] = useState<{ id: string, fileName: string, fileUrl: string }[]>([]);
   const [tempStatus, setTempStatus] = useState<StageStatus>("pending");
-  const [fieldInput, setFieldInput] = useState({ label: "", value: "" });
+  // fieldInput 已移除，参数由节点管理模块配置
   const [filters, setFilters] = useState({ syncStatus: 'all', stageName: 'all' });
 
   // Create Product states
@@ -473,14 +482,7 @@ export default function Dashboard() {
       const { sampleId, stageId } = editingStage;
       const stage = currentSample?.stages.find(st => st.id === stageId);
       
-      let finalFields = [...tempFields];
-      if (fieldInput.label.trim()) {
-        finalFields.push({
-          id: `f-auto-${Date.now()}`,
-          label: fieldInput.label.trim(),
-          value: fieldInput.value.trim()
-        });
-      }
+      const finalFields = [...tempFields];
 
       const statusMap: Record<StageStatus, string> = {
         pending: "待开始",
@@ -510,7 +512,6 @@ export default function Dashboard() {
 
       // 极致优化：立即关闭弹窗并清空输入，实现“瞬时”体感
       setIsNodeModalOpen(false);
-      setFieldInput({ label: "", value: "" });
 
       const res = await updateStageInfo({
         stageId,
@@ -722,6 +723,7 @@ export default function Dashboard() {
         onSelectProduct={handleSelectProduct}
         onCreateOpen={handleCreateOpen}
         onReportOpen={() => setIsReportModalOpen(true)}
+        onStageTemplateOpen={() => setIsStageTemplateModalOpen(true)}
         isFilterOpen={isFilterOpen}
         setIsFilterOpen={setIsFilterOpen}
         filters={filters}
@@ -772,22 +774,22 @@ export default function Dashboard() {
           onNodeRegister={(stage) => {
             if (!selectedProduct) return;
             setEditingStage({ productId: selectedProduct.id, sampleId: activeSampleId, stageId: stage.id });
-            let initialFields = stage.fields.map((f: any) => ({ id: f.id, label: f.label, value: String(f.value) }));
-            if (initialFields.length === 0) {
-              for (const p of products) {
-                const sameStageWithFields = p.samples
-                  .flatMap(s => s.stages)
-                  .find(st => st.name === stage.name && st.fields.length > 0);
-                if (sameStageWithFields) {
-                  initialFields = sameStageWithFields.fields.map(f => ({
-                    id: `f-${Date.now()}-${Math.random()}`,
-                    label: f.label,
-                    value: ""
-                  }));
-                  break;
-                }
-              }
-            }
+            
+            // 查找该节点对应的模板配置
+            const template = templates.find(t => t.name === stage.name);
+            const templateFields = template?.fields || [];
+            
+            // 根据模板配置初始化字段
+            // 如果节点已有数据，使用已有数据；否则使用模板配置创建空字段
+            const initialFields = templateFields.map(tf => {
+              const existingField = stage.fields.find((f: any) => f.label === tf.label);
+              return {
+                id: existingField?.id || `f-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                label: tf.label,
+                value: existingField ? String(existingField.value) : ""
+              };
+            });
+            
             setTempFields(initialFields);
             setTempAttachments(stage.attachments || []);
             setTempStatus(stage.status);
@@ -895,7 +897,7 @@ export default function Dashboard() {
             const orderedTemplates = [...newItems]
               .sort((a, b) => a.order - b.order)
               .map(item => templates.find(t => t.id === item.id))
-              .filter(Boolean) as { id: string, name: string }[];
+              .filter(Boolean) as typeof templates;
             
             setTemplates(orderedTemplates);
             
@@ -909,24 +911,39 @@ export default function Dashboard() {
         />
       )}
 
-      {isNodeModalOpen && (
+      {isNodeModalOpen && editingStage && (
         <NodeInfoModal 
           tempStatus={tempStatus}
           setTempStatus={setTempStatus}
           tempFields={tempFields}
           tempAttachments={tempAttachments}
           setTempAttachments={setTempAttachments}
-          fieldInput={fieldInput}
-          setFieldInput={setFieldInput}
-          onAddTempField={() => {
-            if (fieldInput.label.trim()) {
-              setTempFields([...tempFields, { id: `f-${Date.now()}`, label: fieldInput.label.trim(), value: fieldInput.value.trim() }]);
-              setFieldInput({ label: "", value: "" });
+          templateFields={(() => {
+            // 获取当前编辑节点的模板配置
+            const stage = selectedProduct?.samples
+              .find(s => s.id === editingStage.sampleId)?.stages
+              .find(st => st.id === editingStage.stageId);
+            const template = templates.find(t => t.name === stage?.name);
+            return template?.fields || [];
+          })()}
+          onSave={handleSaveNodeInfo}
+          onUpdateTempField={(id, val) => {
+            // 如果是新字段（模板中有但节点中还没有），需要添加
+            const existingField = tempFields.find(f => f.id === id);
+            if (existingField) {
+              setTempFields(tempFields.map(f => f.id === id ? { ...f, value: val } : f));
+            } else {
+              // 根据 id 找到对应的模板字段 label
+              const stage = selectedProduct?.samples
+                .find(s => s.id === editingStage.sampleId)?.stages
+                .find(st => st.id === editingStage.stageId);
+              const template = templates.find(t => t.name === stage?.name);
+              const templateField = template?.fields.find(tf => tf.id === id);
+              if (templateField) {
+                setTempFields([...tempFields, { id: `f-${Date.now()}`, label: templateField.label, value: val }]);
+              }
             }
           }}
-          onRemoveTempField={(id) => setTempFields(tempFields.filter(f => f.id !== id))}
-          onSave={handleSaveNodeInfo}
-          onUpdateTempField={(id, val) => setTempFields(tempFields.map(f => f.id === id ? { ...f, value: val } : f))}
           onClose={() => setIsNodeModalOpen(false)}
         />
       )}
@@ -951,6 +968,51 @@ export default function Dashboard() {
           onFetchReport={(date) => getDailyReport(date, sessionInfo)}
           onFetchStageTrend={(stage, days) => getStageTrendReport(stage, days, sessionInfo)}
           availableStages={uniqueStageNames}
+        />
+      )}
+
+      {isStageTemplateModalOpen && (
+        <StageTemplateModal
+          templates={templates}
+          onClose={() => setIsStageTemplateModalOpen(false)}
+          onCreateTemplate={async (name) => {
+            const result = await createStageTemplate(name, sessionInfo);
+            if (result.success) {
+              await refreshData();
+            }
+            return result;
+          }}
+          onUpdateTemplateName={async (id, name) => {
+            const result = await updateStageTemplateName(id, name, sessionInfo);
+            if (result.success) {
+              await refreshData();
+            }
+            return result;
+          }}
+          onDeleteTemplate={async (id) => {
+            await deleteStageTemplate(id, sessionInfo);
+            await refreshData();
+          }}
+          onMoveTemplate={async (id, direction) => {
+            await moveStageTemplate(id, direction, sessionInfo);
+            await refreshData();
+          }}
+          onAddField={async (templateId, label, required) => {
+            await addStageTemplateField(templateId, label, required, sessionInfo);
+            await refreshData();
+          }}
+          onUpdateField={async (fieldId, label, required) => {
+            await updateStageTemplateField(fieldId, label, required, sessionInfo);
+            await refreshData();
+          }}
+          onDeleteField={async (fieldId) => {
+            await deleteStageTemplateField(fieldId, sessionInfo);
+            await refreshData();
+          }}
+          onMoveField={async (fieldId, direction) => {
+            await moveStageTemplateField(fieldId, direction, sessionInfo);
+            await refreshData();
+          }}
         />
       )}
     </div>

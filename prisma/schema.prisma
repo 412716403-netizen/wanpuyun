@@ -113,9 +113,21 @@ model StageTemplate {
   name      String   
   order     Int      @default(0)
   createdAt DateTime @default(now())
+  fields    StageTemplateField[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, name])
+}
+
+model StageTemplateField {
+  id         String        @id @default(uuid())
+  templateId String
+  template   StageTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  label      String        // 参数名称
+  required   Boolean       @default(false)  // 是否必填
+  order      Int           @default(0)      // 排序
+
+  @@index([templateId])
 }
 
 model Log {

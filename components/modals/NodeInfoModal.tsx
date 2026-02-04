@@ -1,6 +1,13 @@
-import React from 'react';
-import { X, Plus, FileText, Trash2, Paperclip, Download, ImageIcon, FileArchive } from "lucide-react";
+import React, { useState } from 'react';
+import { X, FileText, Trash2, Paperclip, FileArchive } from "lucide-react";
 import { StageStatus } from "@/types";
+
+interface TemplateField {
+  id: string;
+  label: string;
+  required: boolean;
+  order: number;
+}
 
 interface NodeInfoModalProps {
   tempStatus: StageStatus;
@@ -8,10 +15,7 @@ interface NodeInfoModalProps {
   tempFields: any[];
   tempAttachments: { id: string, fileName: string, fileUrl: string }[];
   setTempAttachments: (a: any) => void;
-  fieldInput: { label: string; value: string };
-  setFieldInput: (f: any) => void;
-  onAddTempField: () => void;
-  onRemoveTempField: (id: string) => void;
+  templateFields: TemplateField[];  // 节点模板配置的参数
   onUpdateTempField: (id: string, value: string) => void;
   onSave: () => void;
   onClose: () => void;
@@ -23,14 +27,34 @@ export const NodeInfoModal = ({
   tempFields,
   tempAttachments,
   setTempAttachments,
-  fieldInput,
-  setFieldInput,
-  onAddTempField,
-  onRemoveTempField,
+  templateFields,
   onUpdateTempField,
   onSave,
   onClose
 }: NodeInfoModalProps) => {
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+
+  // 保存前校验必填项
+  const handleSave = () => {
+    const errors: string[] = [];
+    templateFields.forEach(tf => {
+      if (tf.required) {
+        const field = tempFields.find(f => f.label === tf.label);
+        if (!field || !field.value || field.value.trim() === '') {
+          errors.push(tf.label);
+        }
+      }
+    });
+    
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      alert(`请填写必填项：${errors.join('、')}`);
+      return;
+    }
+    
+    setValidationErrors([]);
+    onSave();
+  };
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -130,32 +154,43 @@ export const NodeInfoModal = ({
 
             <div>
               <label className="text-xs font-bold text-slate-900 mb-4 block">核心工艺 / 参数登记</label>
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                {tempFields.map(field => (
-                  <div key={field.id} className="bg-white rounded-[20px] flex items-center border border-slate-100 group/field relative shadow-sm h-14 hover:border-indigo-200 transition-all overflow-hidden">
-                    <div className="bg-slate-50/50 h-full flex items-center px-4 border-r border-slate-100 min-w-[85px]">
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-tight truncate w-full">{field.label}</span>
-                    </div>
-                    <input 
-                      className="flex-1 px-5 text-sm font-bold text-slate-800 outline-none bg-transparent h-full w-full" 
-                      value={field.value} 
-                      onChange={(e) => onUpdateTempField(field.id, e.target.value)}
-                      placeholder="未填写"
-                    />
-                    <button 
-                      onClick={() => onRemoveTempField(field.id)} 
-                      className="absolute right-2 opacity-0 group-hover/field:opacity-100 p-1.5 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-3 p-2 bg-slate-50 border border-slate-100 border-dashed rounded-[24px]">
-                <input placeholder="参数名称" value={fieldInput.label} onChange={(e) => setFieldInput({...fieldInput, label: e.target.value})} className="flex-1 bg-transparent px-4 py-3 text-sm outline-none" />
-                <input placeholder="参数内容" value={fieldInput.value} onChange={(e) => setFieldInput({...fieldInput, value: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && onAddTempField()} className="flex-1 bg-transparent px-4 py-3 text-sm outline-none border-l border-slate-200" />
-                <button onClick={onAddTempField} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg active:scale-95 transition-all"><Plus className="w-5 h-5" /></button>
-              </div>
+              {templateFields.length === 0 ? (
+                <div className="text-center py-8 bg-slate-50 rounded-3xl text-slate-400 text-sm">
+                  该节点暂未配置参数，请在"节点管理"中添加
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  {templateFields.map(tf => {
+                    const field = tempFields.find(f => f.label === tf.label);
+                    const hasError = validationErrors.includes(tf.label);
+                    return (
+                      <div 
+                        key={tf.id} 
+                        className={`bg-white rounded-[20px] flex items-center border shadow-sm h-14 transition-all overflow-hidden ${
+                          hasError ? 'border-red-300 bg-red-50/30' : 'border-slate-100 hover:border-indigo-200'
+                        }`}
+                      >
+                        <div className={`h-full flex items-center px-4 border-r min-w-[100px] ${
+                          hasError ? 'bg-red-50/50 border-red-200' : 'bg-slate-50/50 border-slate-100'
+                        }`}>
+                          <span className={`text-[11px] font-bold uppercase tracking-tight truncate w-full ${
+                            hasError ? 'text-red-500' : 'text-slate-400'
+                          }`}>
+                            {tf.label}
+                            {tf.required && <span className="text-red-500 ml-0.5">*</span>}
+                          </span>
+                        </div>
+                        <input 
+                          className="flex-1 px-5 text-sm font-bold text-slate-800 outline-none bg-transparent h-full w-full" 
+                          value={field?.value || ''} 
+                          onChange={(e) => onUpdateTempField(field?.id || tf.id, e.target.value)}
+                          placeholder={tf.required ? '必填' : '未填写'}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* 附件上传部分 */}
@@ -218,7 +253,7 @@ export const NodeInfoModal = ({
 
         <div className="flex items-center justify-between p-12 border-t border-slate-100 bg-white">
           <button onClick={onClose} className="text-[11px] font-bold text-slate-400 hover:text-slate-600">放弃修改</button>
-          <button onClick={onSave} className="bg-indigo-600 text-white px-10 py-4 rounded-[24px] font-bold text-sm shadow-xl hover:bg-indigo-700 transition-all active:scale-[0.98]">确认并保存节点信息</button>
+          <button onClick={handleSave} className="bg-indigo-600 text-white px-10 py-4 rounded-[24px] font-bold text-sm shadow-xl hover:bg-indigo-700 transition-all active:scale-[0.98]">确认并保存节点信息</button>
         </div>
       </div>
     </div>
