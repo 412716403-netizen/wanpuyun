@@ -45,7 +45,7 @@ import {
   getStageTrendReport,
   type SessionInfo
 } from "./actions";
-import { Plus, Link as LinkIcon, ShieldCheck } from "lucide-react";
+import { Plus } from "lucide-react";
 import { 
   Product, 
   Stage, 
@@ -678,13 +678,15 @@ export default function Dashboard() {
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-[#F3F4F6] text-slate-500">加载中...</div>;
 
-  // 未连接状态显示
+  // 未连接状态显示（使用内联 SVG 替代 lucide-react，提升老旧浏览器兼容性）
   if (!connectedInfo.isConnected) {
     return (
       <div className="flex h-screen bg-[#F3F4F6] items-center justify-center p-6 font-sans">
         <div className="max-w-md w-full bg-white rounded-[48px] p-12 shadow-2xl shadow-indigo-100 flex flex-col items-center text-center border border-white">
           <div className="w-24 h-24 bg-indigo-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-indigo-200 mb-8 rotate-3">
-            <ShieldCheck className="w-12 h-12 text-white -rotate-3" />
+            <svg className="-rotate-3" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
           </div>
           <h2 className="text-4xl font-black text-slate-900 mb-4 tracking-tight italic">万濮云</h2>
           <p className="text-slate-500 font-medium mb-10 leading-relaxed text-sm">
@@ -692,10 +694,14 @@ export default function Dashboard() {
             请先连接生产管理系统以管理您的款式数据。
           </p>
           <button 
+            type="button"
             onClick={() => setIsConnectModalOpen(true)}
             className="w-full py-5 bg-indigo-600 text-white rounded-[24px] font-black text-sm shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
           >
-            <LinkIcon className="w-5 h-5" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+            </svg>
             立即连接生产系统
           </button>
         </div>
