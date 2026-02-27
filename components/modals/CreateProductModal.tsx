@@ -518,13 +518,6 @@ export const CreateProductModal = ({
     setNewProduct({ ...newProduct, yarnUsage: [...otherColorYarn, ...nextCurrentColorYarn] });
   };
 
-  const updateYarnUsage = (id: string, field: keyof YarnUsage, value: string) => {
-    setNewProduct({
-      ...newProduct,
-      yarnUsage: newProduct.yarnUsage.map(y => y.id === id ? { ...y, [field]: value } : y)
-    });
-  };
-
   const removeYarnUsage = (id: string) => {
     setNewProduct({
       ...newProduct,
@@ -678,7 +671,7 @@ export const CreateProductModal = ({
                   <thead className="bg-slate-50 text-xs font-bold text-slate-400 border-b border-slate-100 uppercase tracking-widest">
                     <tr>
                       <th className="px-10 py-4 border-r border-slate-100 w-40 text-center">对应颜色</th>
-                      <th className="px-10 py-4">纱线配置与单件用量</th>
+                      <th className="px-10 py-4">纱线配置</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -691,8 +684,8 @@ export const CreateProductModal = ({
                         <td className="px-10 py-6">
                           <div className="flex flex-wrap gap-4 items-center min-h-[48px]">
                             {newProduct.yarnUsage.filter(y => y.color === c).map((yarn) => (
-                              <div key={yarn.id} className="flex items-center bg-white border border-slate-100 rounded-2xl p-1.5 shadow-sm pr-3">
-                                <div className="flex flex-col px-3 border-r border-slate-100 mr-4 max-w-[180px]">
+                              <div key={yarn.id} className="flex items-center bg-white border border-slate-100 rounded-2xl px-4 py-2.5 shadow-sm">
+                                <div className="flex flex-col max-w-[220px]">
                                   <div className="flex items-center gap-2">
                                     {yarn.materialColor && (
                                       <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md shrink-0">
@@ -708,17 +701,6 @@ export const CreateProductModal = ({
                                       </span>
                                     )}
                                     {yarn.specification || '默认规格'}
-                                  </span>
-                                </div>
-                                <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl px-2.5 h-8 focus-within:ring-4 focus-within:ring-indigo-500/10 focus-within:bg-white transition-all">
-                                  <input 
-                                    value={yarn.weight}
-                                    onChange={(e) => updateYarnUsage(yarn.id, 'weight', e.target.value)}
-                                    placeholder="0" 
-                                    className="w-10 text-center bg-transparent outline-none font-black text-indigo-600 text-sm" 
-                                  />
-                                  <span className="text-[10px] font-bold text-slate-400 ml-0.5 whitespace-nowrap">
-                                    {yarn.unit === '千克' ? '克' : (yarn.unit || '克')}
                                   </span>
                                 </div>
                               </div>
@@ -768,9 +750,17 @@ export const CreateProductModal = ({
                   </div>
                   <div className="flex flex-wrap gap-3 pt-6 border-t border-slate-200/50">
                     {newProductStages.map((step, i) => (
-                      <div key={i} className="flex items-center gap-3 bg-white border border-slate-100 px-5 py-2.5 rounded-2xl shadow-sm">
+                      <div key={i} className="group/tag relative flex items-center gap-3 bg-white border border-slate-100 px-5 py-2.5 rounded-2xl shadow-sm">
                         <span className="text-[10px] font-black text-slate-300 tracking-tighter">{i + 1}</span>
                         <span className="text-xs font-bold text-slate-700">{step}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onRemoveStage(i); }}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/tag:opacity-100 shadow-md hover:bg-red-600 transition-opacity"
+                          title="删除节点"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
                       </div>
                     ))}
                     {newProductStages.length === 0 && (
