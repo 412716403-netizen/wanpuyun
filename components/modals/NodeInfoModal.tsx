@@ -1,6 +1,77 @@
 import React, { useState } from 'react';
-import { X, FileText, Trash2, Paperclip, FileArchive } from "lucide-react";
+import { X, FileText, Trash2, Paperclip, FileArchive, Download } from "lucide-react";
 import { StageStatus } from "@/types";
+import { SafeImage, useSafeUrl } from "@/components/SafeImage";
+
+const NodeAttachmentItem = ({ file, onRemove }: { 
+  file: { id: string, fileName: string, fileUrl: string }, 
+  onRemove: () => void 
+}) => {
+  const safeUrl = useSafeUrl(file.fileUrl);
+  const isImage = file.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+  const [showPreview, setShowPreview] = useState(false);
+
+  return (
+    <>
+      {showPreview && isImage && (
+        <div 
+          className="fixed inset-0 z-[600] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-10 animate-in fade-in duration-200"
+          onClick={() => setShowPreview(false)}
+        >
+          <button 
+            className="absolute top-10 right-10 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"
+            onClick={() => setShowPreview(false)}
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <img 
+            src={safeUrl} 
+            className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300" 
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+      <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl group/file">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div 
+            className={`w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0 ${isImage ? 'cursor-zoom-in' : ''}`}
+            onClick={() => isImage && setShowPreview(true)}
+          >
+            {isImage ? (
+              <img src={safeUrl} className="w-full h-full object-cover" />
+            ) : file.fileName.match(/\.(zip|rar|7z)$/i) ? (
+              <FileArchive className="w-5 h-5 text-amber-500" />
+            ) : (
+              <FileText className="w-5 h-5 text-indigo-500" />
+            )}
+          </div>
+          <div className="overflow-hidden">
+            <p className="text-sm font-bold text-slate-700 truncate">{file.fileName}</p>
+            <div className="flex gap-3">
+              {isImage ? (
+                <button onClick={() => setShowPreview(true)} className="text-[10px] text-indigo-500 hover:underline">预览</button>
+              ) : (
+                <a href={safeUrl} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-500 hover:underline">预览</a>
+              )}
+              <button 
+                onClick={() => { const link = document.createElement('a'); link.href = safeUrl; link.download = file.fileName; document.body.appendChild(link); link.click(); document.body.removeChild(link); }}
+                className="text-[10px] text-emerald-500 hover:underline"
+              >
+                下载
+              </button>
+            </div>
+          </div>
+        </div>
+        <button 
+          onClick={onRemove}
+          className="p-2 opacity-0 group-hover/file:opacity-100 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </>
+  );
+};
 
 interface TemplateField {
   id: string;
@@ -199,42 +270,13 @@ export const NodeInfoModal = ({
             <div>
               <label className="text-xs font-bold text-slate-900 mb-4 block">附件 / 样品开发记录 (图片或文档)</label>
               <div className="space-y-3 mb-4">
-                {tempAttachments.map(file => {
-                  const isImage = file.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-                  return (
-                  <div key={file.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-2xl group/file">
-                    <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
-                          {isImage ? (
-                            <img src={file.fileUrl} className="w-full h-full object-cover" />
-                          ) : file.fileName.match(/\.(zip|rar|7z)$/i) ? (
-                            <FileArchive className="w-5 h-5 text-amber-500" />
-                          ) : (
-                        <FileText className="w-5 h-5 text-indigo-500" />
-                          )}
-                      </div>
-                      <div className="overflow-hidden">
-                        <p className="text-sm font-bold text-slate-700 truncate">{file.fileName}</p>
-                          <div className="flex gap-3">
-                            <a href={file.fileUrl} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-500 hover:underline">预览</a>
-                            <button 
-                              onClick={() => handleDownload(file.fileUrl, file.fileName)}
-                              className="text-[10px] text-emerald-500 hover:underline"
-                            >
-                              下载
-                            </button>
-                          </div>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setTempAttachments(tempAttachments.filter(a => a.id !== file.id))}
-                      className="p-2 opacity-0 group-hover/file:opacity-100 text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  );
-                })}
+                {tempAttachments.map(file => (
+                  <NodeAttachmentItem 
+                    key={file.id} 
+                    file={file} 
+                    onRemove={() => setTempAttachments(tempAttachments.filter(a => a.id !== file.id))} 
+                  />
+                ))}
               </div>
               
               <div className="relative">

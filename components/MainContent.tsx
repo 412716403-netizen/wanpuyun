@@ -1,6 +1,48 @@
 import React from 'react';
 import { Edit3, CheckCircle2, Clock, RefreshCw, History, Plus, Layers, FileText, X, Download, FileArchive, Image as ImageIcon, Trash2, Tag, Ruler } from "lucide-react";
 import { Product, SampleVersion } from "@/types";
+import { SafeImage, useSafeUrl } from "@/components/SafeImage";
+
+const AttachmentItem = ({ file }: { file: { id: string, fileName: string, fileUrl: string } }) => {
+  const safeUrl = useSafeUrl(file.fileUrl);
+  const isImage = file.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+  const [showPreview, setShowPreview] = React.useState(false);
+
+  return (
+    <>
+      {showPreview && isImage && (
+        <div 
+          className="fixed inset-0 z-[500] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-10 animate-in fade-in duration-200"
+          onClick={() => setShowPreview(false)}
+        >
+          <button 
+            className="absolute top-10 right-10 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"
+            onClick={() => setShowPreview(false)}
+          >
+            <X className="w-8 h-8" />
+          </button>
+          <img 
+            src={safeUrl} 
+            className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300" 
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+      <div className="group/file relative flex items-center gap-3 px-4 py-2.5 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-2xl transition-all pr-12">
+        <div className={`flex items-center gap-3 ${isImage ? 'cursor-zoom-in' : ''}`} onClick={() => isImage && setShowPreview(true)}>
+          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
+            {isImage ? <img src={safeUrl} className="w-full h-full object-cover" /> : file.fileName.match(/\.(zip|rar|7z)$/i) ? <FileArchive className="w-5 h-5 text-amber-500" /> : <FileText className="w-5 h-5 text-indigo-500" />}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[11px] font-bold text-indigo-600 truncate max-w-[120px]">{file.fileName}</span>
+            <span className="text-[9px] text-indigo-400 font-medium">{isImage ? '图片文件' : file.fileName.match(/\.(zip|rar|7z)$/i) ? '压缩包文件' : '文档文件'}</span>
+          </div>
+        </div>
+        <button onClick={() => { const link = document.createElement('a'); link.href = safeUrl; link.download = file.fileName; link.click(); }} className="absolute right-3 p-2 bg-white text-indigo-500 hover:text-indigo-700 rounded-lg shadow-sm opacity-0 group-hover/file:opacity-100 transition-all"><Download className="w-3.5 h-3.5" /></button>
+      </div>
+    </>
+  );
+};
 
 interface MainContentProps {
   selectedProduct: Product;
@@ -55,7 +97,7 @@ export const MainContent = ({
           >
             <X className="w-8 h-8" />
           </button>
-          <img 
+          <SafeImage 
             src={selectedProduct.image} 
             className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300" 
             onClick={(e) => e.stopPropagation()}
@@ -76,7 +118,12 @@ export const MainContent = ({
           className={`w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0 flex items-center justify-center transition-all ${selectedProduct.image ? 'cursor-zoom-in hover:scale-[1.02] active:scale-[0.98]' : ''}`}
         >
           {selectedProduct.image && selectedProduct.image.startsWith('data:') ? (
-            <img src={selectedProduct.image} className="w-full h-full object-cover" />
+            <SafeImage src={selectedProduct.image} className="w-full h-full object-cover" fallback={
+              <div className="flex flex-col items-center text-slate-300">
+                <ImageIcon className="w-16 h-16 mb-2 opacity-20" />
+                <span className="text-[10px] font-bold uppercase tracking-widest opacity-40">No Image</span>
+              </div>
+            } />
           ) : (
             <div className="flex flex-col items-center text-slate-300">
               <ImageIcon className="w-16 h-16 mb-2 opacity-20" />
@@ -204,18 +251,7 @@ export const MainContent = ({
                 {stage.attachments && stage.attachments.length > 0 && (
                   <div className="flex flex-wrap gap-3 mb-8">
                     {stage.attachments.map((file: any) => (
-                      <div key={file.id} className="group/file relative flex items-center gap-3 px-4 py-2.5 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 rounded-2xl transition-all pr-12">
-                        <a href={file.fileUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
-                            {file.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? <img src={file.fileUrl} className="w-full h-full object-cover" /> : file.fileName.match(/\.(zip|rar|7z)$/i) ? <FileArchive className="w-5 h-5 text-amber-500" /> : <FileText className="w-5 h-5 text-indigo-500" />}
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[11px] font-bold text-indigo-600 truncate max-w-[120px]">{file.fileName}</span>
-                            <span className="text-[9px] text-indigo-400 font-medium">{file.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? '图片文件' : file.fileName.match(/\.(zip|rar|7z)$/i) ? '压缩包文件' : '文档文件'}</span>
-                          </div>
-                        </a>
-                        <button onClick={() => { const link = document.createElement('a'); link.href = file.fileUrl; link.download = file.fileName; link.click(); }} className="absolute right-3 p-2 bg-white text-indigo-500 hover:text-indigo-700 rounded-lg shadow-sm opacity-0 group-hover/file:opacity-100 transition-all"><Download className="w-3.5 h-3.5" /></button>
-                      </div>
+                      <AttachmentItem key={file.id} file={file} />
                     ))}
                   </div>
                 )}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus, Search, Filter, Image as ImageIcon, X, Link, Link2Off, BarChart3, Settings2 } from "lucide-react";
 import { Product } from "@/types";
+import { SafeImage } from "@/components/SafeImage";
 
 interface ProductSidebarProps {
   products: Product[];
@@ -182,7 +183,7 @@ export const ProductSidebar = ({
             <div className="flex gap-4">
               <div className="w-16 h-16 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center">
                 {(product.thumbnail || product.image) && (product.thumbnail?.startsWith('data:') || product.image?.startsWith('data:')) ? (
-                  <img src={product.thumbnail || product.image} className="w-full h-full object-cover" />
+                  <SafeImage src={(product.thumbnail || product.image)!} className="w-full h-full object-cover" fallback={<ImageIcon className="w-6 h-6 text-slate-300" />} />
                 ) : (
                   <ImageIcon className="w-6 h-6 text-slate-300" />
                 )}

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Image as ImageIcon, Search, Check, Trash2, ArrowRight, Settings2, Hash, Layers, Palette, ListFilter, CheckCircle2 } from "lucide-react";
 import { ProductCustomField, YarnUsage } from "@/types";
+import { SafeImage } from "@/components/SafeImage";
 
 interface CreateProductModalProps {
   isEditMode: boolean;
@@ -57,7 +58,8 @@ const SelectionModal = ({
   unitDict,
   onFetchUnits,
   placeholder = "搜索内容...",
-  isLoading = false
+  isLoading = false,
+  showPermissionWarning = false
 }: { 
   isOpen: boolean, 
   onClose: () => void, 
@@ -70,7 +72,8 @@ const SelectionModal = ({
   unitDict?: { id: string, name: string }[],
   onFetchUnits?: () => void,
   placeholder?: string,
-  isLoading?: boolean
+  isLoading?: boolean,
+  showPermissionWarning?: boolean
 }) => {
   const [search, setSearch] = useState("");
   const [tempSelectedIds, setTempSelectedIds] = useState<string[]>(selectedIds);
@@ -363,6 +366,16 @@ const SelectionModal = ({
                       </button>
                     );
                   })
+                ) : showPermissionWarning && options.length === 0 ? (
+                  <div className="py-12 px-6 text-center">
+                    <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-amber-50 flex items-center justify-center">
+                      <span className="text-2xl">⚠️</span>
+                    </div>
+                    <p className="text-sm font-bold text-slate-700 mb-2">暂无数据</p>
+                    <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
+                      您的万濮云账号可能没有开放字典管理权限，请登录万濮云后台，在权限设置中开启商品管理和字典管理等相关权限后重试。
+                    </p>
+                  </div>
                 ) : (
                   <div className="py-12 text-center">
                     <p className="text-sm text-slate-400 mb-3 font-medium">未找到结果</p>
@@ -544,7 +557,12 @@ export const CreateProductModal = ({
           <div className="w-[320px] bg-slate-50 border-r border-slate-100 p-10 flex flex-col shrink-0 overflow-y-auto no-scrollbar">
             <div className="aspect-square rounded-[32px] border-4 border-white shadow-xl overflow-hidden relative group bg-slate-200 shrink-0">
               {newProduct.image ? (
-                <img src={newProduct.image} className="w-full h-full object-cover" />
+                <SafeImage src={newProduct.image} className="w-full h-full object-cover" fallback={
+                  <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
+                    <ImageIcon className="w-12 h-12 mb-4 opacity-20" />
+                    <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">款式图</p>
+                  </div>
+                } />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                   <ImageIcon className="w-12 h-12 mb-4 opacity-20" />
@@ -791,7 +809,7 @@ export const CreateProductModal = ({
         </div>
 
         {/* 弹窗组件保持一致的紧凑字体 */}
-        <SelectionModal 
+        <SelectionModal
           isOpen={selectionType === 'color'}
           onClose={() => setSelectionType(null)}
           title="选取款式生产颜色"
@@ -801,8 +819,9 @@ export const CreateProductModal = ({
           onAdd={(name) => onAddDictItem('color', name)}
           placeholder="搜索颜色..."
           isLoading={dictLoading?.colors}
+          showPermissionWarning
         />
-        <SelectionModal 
+        <SelectionModal
           isOpen={selectionType === 'size'}
           onClose={() => setSelectionType(null)}
           title="选取尺码范围"
@@ -812,6 +831,7 @@ export const CreateProductModal = ({
           onAdd={(name) => onAddDictItem('size', name)}
           placeholder="搜索尺码..."
           isLoading={dictLoading?.sizes}
+          showPermissionWarning
         />
         <SelectionModal 
           isOpen={selectionType === 'yarn'}
