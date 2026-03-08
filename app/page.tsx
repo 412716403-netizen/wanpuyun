@@ -90,7 +90,9 @@ export default function Dashboard() {
     } catch {}
   }, []);
 
-  // URL 带 fact/username/password 时使用「登录（快速）」接口，成功则直接进首页
+  // URL 带 fact/username/password 时自动登录，成功则直接进首页
+  // 策略：先尝试普通登录（password 为明文时可直接获取 fact Cookie），
+  //       若失败再尝试快速登录（password 为 MD5 时走 factapp 接口）
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -100,7 +102,18 @@ export default function Dashboard() {
     if (!fact || !username || !password) return;
 
     setQuickLoginInProgress(true);
-    externalLoginQuick(fact, username, password)
+
+    const doLogin = async () => {
+      // 优先尝试普通登录（明文密码可直接获取 fact Cookie，颜色/尺码/同步全可用）
+      const normalResult = await externalLogin(fact, username, password);
+      if (normalResult.success && normalResult.session) {
+        return normalResult;
+      }
+      // 普通登录失败（password 可能是 MD5），走快速登录
+      return externalLoginQuick(fact, username, password);
+    };
+
+    doLogin()
       .then((result) => {
         if (result.success && result.session) {
           localStorage.setItem("wanpuyun_session", JSON.stringify(result.session));
