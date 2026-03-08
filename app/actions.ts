@@ -206,40 +206,54 @@ export async function externalLoginQuick(fact: string, username: string, passwor
       timeout: 15000,
     });
 
+    const setCookieHeader = response.headers.get('set-cookie');
     const result = await response.json();
 
     if (result.error === 0) {
-      // 快速登录成功后，用同样的凭证调一次普通登录以获取 fact 后台的正式 Cookie
-      // （普通登录也接受 MD5 密码或由后端统一处理）
-      const factLoginResult = await externalLogin(fact, username, passwordMd5);
-      if (factLoginResult.success && factLoginResult.session) {
-        return {
-          success: true,
-          message: "连接成功",
-          session: {
-            ...factLoginResult.session,
-            isQuickLogin: true,
-          },
-        };
-      }
-
-      // 如果普通登录失败，仍用快速登录的信息（本地数据可用，但字典等外部接口可能不可用）
-      logger.warn("[LoginQuick] 快速登录成功但 fact 普通登录未成功，字典功能可能受限");
       const cookieStore = await cookies();
       const cookieOptions = {
         path: '/',
         maxAge: 60 * 60 * 24 * 7,
         sameSite: 'lax' as const,
       };
+
+      let sessionCookie = "";
+      let token = "";
+
+      // 优先使用响应头的 Set-Cookie
+      if (setCookieHeader) {
+        const valid_cookies = setCookieHeader
+          .split(/,(?=\s*[^,;]+=[^,;]+)/)
+          .map((c: string) => c.trim().split(';')[0])
+          .filter((c: string) => !c.includes('=deleted'));
+        if (valid_cookies.length > 0) {
+          sessionCookie = valid_cookies.join('; ');
+          const match = sessionCookie.match(/advanced-frontend-fact=([^;]+)/);
+          if (match) token = match[1];
+        }
+      }
+
+      // 用返回的 session 秘钥构造 Cookie（API 文档：该秘钥用于当前管理员访问其他模块）
+      if (!token && result.session) {
+        token = result.session;
+        sessionCookie = `advanced-frontend-fact=${result.session}`;
+      }
+
+      if (token) {
+        cookieStore.set('external_token', token, cookieOptions);
+        cookieStore.set('external_session_cookie', sessionCookie, cookieOptions);
+      }
       cookieStore.set('connected_company', fact, cookieOptions);
       cookieStore.set('connected_user_name', username, cookieOptions);
+
+      logger.info(`[LoginQuick] 快速登录成功: company=${fact}, user=${username}, hasToken=${!!token}`);
 
       return {
         success: true,
         message: "连接成功",
         session: {
-          token: result.session || "",
-          sessionCookie: result.session ? `advanced-frontend-fact=${result.session}` : "",
+          token,
+          sessionCookie,
           company: fact,
           userName: username,
           isQuickLogin: true,
@@ -683,7 +697,7 @@ export async function getConnectedInfo(sessionInfo?: SessionInfo) {
   }
 
   // 默认保持现状，除非明确检测到登录页
-  return { isConnected: !!session.token, company: session.company || "", userName: session.userName || "" };
+  return { isConnected: !!(session.token || session.isQuickLogin), company: session.company || "", userName: session.userName || "" };
 }
 
 export async function disconnectExternal() {
@@ -702,7 +716,7 @@ export async function getProducts(sessionInfo?: SessionInfo) {
   try {
     const session = await getSession(sessionInfo);
 
-    if (!session || !session.token || !session.company) {
+    if (!session || !session.company || (!session.token && !session.isQuickLogin)) {
       logger.debug("[getProducts] 未连接，不返回任何数据");
       return [];
     }
@@ -801,7 +815,7 @@ export async function getProductDetail(productId: string, sessionInfo?: SessionI
 export async function getStageTemplates(sessionInfo?: SessionInfo) {
   const session = await getSession(sessionInfo);
   
-  if (!session || !session.token || !session.company) return [];
+  if (!session || !session.company || (!session.token && !session.isQuickLogin)) return [];
   
   return await prisma.stageTemplate.findMany({ 
     where: { tenantId: session.company },
