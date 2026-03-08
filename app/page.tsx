@@ -38,8 +38,10 @@ import {
   addDictItem,
   getConnectedInfo,
   externalLogin,
+  externalLoginQuick,
   disconnectExternal,
   getExternalUnits,
+  getExternalCustomers,
   addMaterial,
   getDailyReport,
   getStageTrendReport,
@@ -63,16 +65,52 @@ export default function Dashboard() {
   const [sizeDict, setSizeDict] = useState<{ id: string, name: string }[]>([]);
   const [materialDict, setMaterialDict] = useState<{ id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[]>([]);
   const [unitDict, setUnitDict] = useState<{ id: string, name: string }[]>([]);
+  const [customerDict, setCustomerDict] = useState<{ id: string, name: string, sn?: string, address?: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [dictLoading, setDictLoading] = useState({ colors: false, sizes: false, materials: false, units: false });
+  const [dictLoading, setDictLoading] = useState({ colors: false, sizes: false, materials: false, units: false, customers: false });
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [activeSampleId, setActiveSampleId] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"developing" | "archived">("developing");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortMode, setSortModeState] = useState<"time" | "customer">("time");
+  const setSortMode = (mode: "time" | "customer") => {
+    setSortModeState(mode);
+    try { localStorage.setItem("sortMode", mode); } catch {}
+  };
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [connectedInfo, setConnectedInfo] = useState({ isConnected: false, company: "", userName: "" });
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | undefined>(undefined);
+  const [quickLoginInProgress, setQuickLoginInProgress] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("sortMode");
+      if (saved === "time" || saved === "customer") setSortModeState(saved);
+    } catch {}
+  }, []);
+
+  // URL 带 fact/username/password 时使用「登录（快速）」接口，成功则直接进首页
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const fact = params.get("fact");
+    const username = params.get("username");
+    const password = params.get("password");
+    if (!fact || !username || !password) return;
+
+    setQuickLoginInProgress(true);
+    externalLoginQuick(fact, username, password)
+      .then((result) => {
+        if (result.success && result.session) {
+          localStorage.setItem("wanpuyun_session", JSON.stringify(result.session));
+          window.location.replace(window.location.pathname || "/");
+          return;
+        }
+        setQuickLoginInProgress(false);
+      })
+      .catch(() => setQuickLoginInProgress(false));
+  }, []);
 
   // 初始化加载数据
   useEffect(() => {
@@ -184,22 +222,35 @@ export default function Dashboard() {
     }
   };
 
+  const loadCustomers = async () => {
+    if (!connectedInfo.isConnected || customerDict.length > 0 || dictLoading.customers) return;
+    setDictLoading(prev => ({ ...prev, customers: true }));
+    try {
+      const data = await getExternalCustomers(sessionInfo);
+      setCustomerDict(data);
+    } finally {
+      setDictLoading(prev => ({ ...prev, customers: false }));
+    }
+  };
+
   const refreshDicts = async () => {
     // 强制刷新所有字典
-    setDictLoading({ colors: true, sizes: true, materials: true, units: true });
+    setDictLoading({ colors: true, sizes: true, materials: true, units: true, customers: true });
     try {
-      const [c, s, m, u] = await Promise.all([
+      const [c, s, m, u, cust] = await Promise.all([
         getExternalColors(sessionInfo), 
         getExternalSizes(sessionInfo), 
         getExternalMaterials(sessionInfo),
-        getExternalUnits(sessionInfo)
+        getExternalUnits(sessionInfo),
+        getExternalCustomers(sessionInfo)
       ]);
       setColorDict(c);
       setSizeDict(s);
       setMaterialDict(m);
       setUnitDict(u);
+      setCustomerDict(cust);
     } finally {
-      setDictLoading({ colors: false, sizes: false, materials: false, units: false });
+      setDictLoading({ colors: false, sizes: false, materials: false, units: false, customers: false });
     }
   };
   
@@ -227,6 +278,7 @@ export default function Dashboard() {
     name: "", 
     image: "", 
     thumbnail: "",
+    customerName: "",
     colors: [] as string[],
     sizes: [] as string[],
     yarnUsage: [] as YarnUsage[],
@@ -252,7 +304,8 @@ export default function Dashboard() {
         const q = searchQuery.toLowerCase();
         const matchCode = p.code.toLowerCase().includes(q);
         const matchName = p.name.toLowerCase().includes(q);
-        if (!matchCode && !matchName) return false;
+        const matchCustomer = (p.customerName || "").toLowerCase().includes(q);
+        if (!matchCode && !matchName && !matchCustomer) return false;
       }
       if (filters.syncStatus === 'synced' && !p.isSynced) return false;
       if (filters.syncStatus === 'unsynced' && p.isSynced) return false;
@@ -372,6 +425,7 @@ export default function Dashboard() {
       setSizeDict([]);
       setMaterialDict([]);
       setUnitDict([]);
+      setCustomerDict([]);
     }
   };
 
@@ -405,6 +459,7 @@ export default function Dashboard() {
           yarnUsage: newProduct.yarnUsage,
           image: newProduct.image,
           thumbnail: newProduct.thumbnail,
+          customerName: newProduct.customerName,
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value }))
         }, sessionInfo);
         
@@ -426,6 +481,7 @@ export default function Dashboard() {
           yarnUsage: newProduct.yarnUsage,
           image: newProduct.image,
           thumbnail: newProduct.thumbnail,
+          customerName: newProduct.customerName,
           customFields: finalCustomFields.map(f => ({ label: f.label, value: f.value })),
           stages: newProductStages
         }, sessionInfo);
@@ -448,7 +504,7 @@ export default function Dashboard() {
       }
       setIsCreateModalOpen(false);
       setIsEditMode(false);
-      setNewProduct({ code: "", name: "", image: "", thumbnail: "", colors: [], sizes: [], yarnUsage: [], customFields: [] });
+      setNewProduct({ code: "", name: "", image: "", thumbnail: "", customerName: "", colors: [], sizes: [], yarnUsage: [], customFields: [] });
       setNewProductFieldInput({ label: "", value: "" }); 
       setNewProductStages([]);
     } catch (error: any) {
@@ -465,6 +521,7 @@ export default function Dashboard() {
       name: p.name, 
       image: p.image || "", 
       thumbnail: p.thumbnail || "",
+      customerName: p.customerName || "",
       colors: p.colors || [],
       sizes: p.sizes || [],
       yarnUsage: p.yarnUsage || [],
@@ -667,6 +724,7 @@ export default function Dashboard() {
       name: "", 
       image: "", 
       thumbnail: "",
+      customerName: "",
       colors: [],
       sizes: [],
       yarnUsage: [],
@@ -677,6 +735,15 @@ export default function Dashboard() {
   };
 
   if (loading) return <div className="flex h-screen items-center justify-center bg-[#F3F4F6] text-slate-500">加载中...</div>;
+
+  // 正在通过 URL 参数快速登录时显示加载，不展示登录页
+  if (quickLoginInProgress) {
+    return (
+      <div className="flex h-screen bg-[#F3F4F6] items-center justify-center p-6 font-sans">
+        <div className="text-slate-500 font-medium">正在登录...</div>
+      </div>
+    );
+  }
 
   // 未连接状态显示（使用内联 SVG 替代 lucide-react，提升老旧浏览器兼容性）
   if (!connectedInfo.isConnected) {
@@ -738,6 +805,8 @@ export default function Dashboard() {
         connectedInfo={connectedInfo}
         onConnectOpen={() => setIsConnectModalOpen(true)}
         onDisconnect={handleDisconnect}
+        sortMode={sortMode}
+        setSortMode={setSortMode}
       />
 
       {selectedProduct ? (
@@ -845,6 +914,8 @@ export default function Dashboard() {
           onFetchSizes={loadSizes}
           onFetchMaterials={loadMaterials}
           onFetchUnits={loadUnits}
+          customerDict={customerDict}
+          onFetchCustomers={loadCustomers}
           onAddMaterial={async (m) => {
             const res = await addMaterial(m, sessionInfo);
             if (res.success) {

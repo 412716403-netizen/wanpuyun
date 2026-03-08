@@ -157,6 +157,12 @@ export const MainContent = ({
           
           <div className="flex items-center gap-3 text-indigo-500 font-bold mb-8">
             <span className="text-sm">{selectedProduct.name}</span>
+            {selectedProduct.customerName && (
+              <>
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-200"></div>
+                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-lg border border-amber-100">{selectedProduct.customerName}</span>
+              </>
+            )}
             <div className="w-1.5 h-1.5 rounded-full bg-indigo-200"></div>
             <span className="text-xs text-slate-400 font-medium tracking-tight">创建于 {selectedProduct.createdAt}</span>
             <button onClick={() => onToggleArchive(selectedProduct.id)} className={`ml-4 flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold border transition-all ${selectedProduct.status === 'developing' ? 'bg-slate-50 text-slate-400 border-slate-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>

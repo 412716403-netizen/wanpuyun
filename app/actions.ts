@@ -28,6 +28,7 @@ function mapProduct(dbProduct: any): Product {
     isSynced: dbProduct.isSynced,
     image: dbProduct.image || "",
     thumbnail: dbProduct.thumbnail || "",
+    customerName: dbProduct.customerName || "",
     createdAt: dbProduct.createdAt.toISOString().split('T')[0],
     customFields: dbProduct.customFields?.map((cf: any) => ({
       id: cf.id,
@@ -73,6 +74,7 @@ export type SessionInfo = {
   sessionCookie: string;
   company: string;
   userName: string;
+  isQuickLogin?: boolean;
 }
 
 // 辅助函数：获取会话信息（优先从参数获取，其次从 Cookie 获取）
@@ -184,6 +186,81 @@ export async function externalLogin(company: string, user: string, pass: string)
   }
 }
 
+/** 登录（快速）：主工厂 APP 快速登录接口，用于 URL 带 fact/username/password 时自动登录。password 为已 MD5 的值。 */
+export async function externalLoginQuick(fact: string, username: string, passwordMd5: string) {
+  if (!EXTERNAL_API_BASE_URL) return { success: false, message: "请配置域名" };
+  try {
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/factapp/admin/login-quick.html`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        platform: 'H5',
+        fact,
+        username,
+        password: passwordMd5,
+      }).toString(),
+      timeout: 15000,
+    });
+
+    const setCookieHeader = response.headers.get('set-cookie');
+    const result = await response.json();
+
+    if (result.error === 0) {
+      const cookieStore = await cookies();
+      const cookieOptions = {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+        sameSite: 'lax' as const,
+      };
+
+      let sessionCookie = "";
+      let token = "";
+
+      if (setCookieHeader) {
+        const valid_cookies = setCookieHeader
+          .split(/,(?=\s*[^,;]+=[^,;]+)/)
+          .map((c: string) => c.trim().split(';')[0])
+          .filter((c: string) => !c.includes('=deleted'));
+        if (valid_cookies.length > 0) {
+          sessionCookie = valid_cookies.join('; ');
+          cookieStore.set('external_session_cookie', sessionCookie, cookieOptions);
+          const match = sessionCookie.match(/advanced-frontend-fact=([^;]+)/);
+          if (match) {
+            token = match[1];
+            cookieStore.set('external_token', token, cookieOptions);
+          }
+        }
+      }
+      // 若响应未带 Set-Cookie 但返回了 session 秘钥，用其构造 Cookie 供后续 fact 请求使用
+      if (!sessionCookie && result.session) {
+        token = result.session;
+        sessionCookie = `advanced-frontend-fact=${result.session}`;
+        cookieStore.set('external_token', token, cookieOptions);
+        cookieStore.set('external_session_cookie', sessionCookie, cookieOptions);
+      }
+
+      cookieStore.set('connected_company', fact, cookieOptions);
+      cookieStore.set('connected_user_name', username, cookieOptions);
+
+      return {
+        success: true,
+        message: "连接成功",
+        session: {
+          token: token || cookieStore.get('external_token')?.value || "",
+          sessionCookie,
+          company: fact,
+          userName: username,
+          isQuickLogin: true,
+        },
+      };
+    }
+    return { success: false, message: result.message || "登录失败" };
+  } catch (error) {
+    logger.error("[LoginQuick] Connection failed or timeout:", error);
+    return { success: false, message: "连接生产系统超时或异常，请检查网络" };
+  }
+}
+
 // 获取颜色字典 (Type: 3)
 export async function getExternalColors(sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return [];
@@ -274,6 +351,42 @@ export async function getExternalMaterials(sessionInfo?: SessionInfo) {
     return materials;
   } catch (error) {
     logger.error("[InitData] 物料拉取异常:", error);
+    return [];
+  }
+}
+
+// 获取客户列表 (Customers)
+export async function getExternalCustomers(sessionInfo?: SessionInfo) {
+  if (!EXTERNAL_API_BASE_URL) return [];
+  try {
+    const session = await getSession(sessionInfo);
+    if (!session) return [];
+
+    const headers: Record<string, string> = { 
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': session.sessionCookie 
+    };
+
+    logger.debug("[InitData] 开始从外部系统拉取客户列表...");
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/customer/list-data.html`, { 
+      method: 'POST', 
+      headers, 
+      body: 'platform=H5&limit=1000&pageSize=1000&per-page=1000', 
+      timeout: 10000 
+    });
+    const result = await response.json();
+    const customers = (result.data || []).map((item: any) => ({ 
+      id: String(item.customer_id), 
+      name: item.name,
+      sn: item.sn || "",
+      address: item.address || "",
+      contactName: item.contact_name || "",
+      contactPhone: item.contact_phone || ""
+    }));
+    logger.info(`[InitData] 客户拉取完成: ${customers.length} 条`);
+    return customers;
+  } catch (error) {
+    logger.error("[InitData] 客户拉取异常:", error);
     return [];
   }
 }
@@ -533,6 +646,11 @@ export async function addDictItem(type: string, name: string, sessionInfo?: Sess
 }
 
 export async function getConnectedInfo(sessionInfo?: SessionInfo) {
+  // 快速登录的会话使用 session token 鉴权，不走 fact.html Cookie 校验
+  if (sessionInfo?.isQuickLogin && sessionInfo.company) {
+    return { isConnected: true, company: sessionInfo.company, userName: sessionInfo.userName || "" };
+  }
+
   const session = await getSession(sessionInfo);
 
   if (!session) {
@@ -608,9 +726,9 @@ export async function getProducts(sessionInfo?: SessionInfo) {
         tenantId: true,
         status: true,
         isSynced: true,
-        thumbnail: true, 
+        thumbnail: true,
+        customerName: true,
         createdAt: true,
-        // 列表只需要知道进度状态，不需要字段和日志
         samples: {
           select: {
             id: true,
@@ -925,6 +1043,7 @@ export async function createProduct(data: {
   yarnUsage: { color: string, materialName: string, specification?: string, weight?: string, unit?: string, materialColor?: string, materialType?: string }[],
   image?: string,
   thumbnail?: string,
+  customerName?: string,
   customFields: { label: string, value: string }[],
   stages: string[]
 }, sessionInfo?: SessionInfo) {
@@ -967,6 +1086,7 @@ export async function createProduct(data: {
       sizesJson: JSON.stringify(data.sizes),
       image: data.image,
       thumbnail: data.thumbnail,
+      customerName: data.customerName || null,
       customFields: {
         create: data.customFields.map(f => ({ label: f.label, value: f.value }))
       },
@@ -1020,6 +1140,7 @@ export async function updateProduct(id: string, data: {
   yarnUsage: { color: string, materialName: string, specification?: string, weight?: string, unit?: string, materialColor?: string, materialType?: string }[],
   image?: string,
   thumbnail?: string,
+  customerName?: string,
   customFields: { label: string, value: string }[]
 }, sessionInfo?: SessionInfo) {
   const session = await getSession(sessionInfo);
@@ -1053,6 +1174,7 @@ export async function updateProduct(id: string, data: {
       sizesJson: JSON.stringify(data.sizes),
       image: data.image,
       thumbnail: data.thumbnail,
+      customerName: data.customerName || null,
       customFields: {
         deleteMany: {},
         create: data.customFields.map(f => ({ label: f.label, value: f.value }))

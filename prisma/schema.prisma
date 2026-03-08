@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,85 +9,86 @@ datasource db {
 
 model Product {
   id           String               @id @default(uuid())
-  tenantId     String               @default("default") // 租户标识 (公司名)
-  code         String               // 款号
-  name         String               // 品名
-  color        String?              // 颜色 (基础)
-  size         String?              // 尺码 (基础)
-  colorsJson   String               @default("[]") // 已选颜色池 (JSON)
-  sizesJson    String               @default("[]") // 已选尺码池 (JSON)
-  status       String               @default("developing") // developing | archived
-  isSynced     Boolean              @default(false)        // 大货同步状态
-  image        String?              // 款式图片 (高清)
-  thumbnail    String?              // 款式图片 (缩略图)
+  tenantId     String               @default("default")
+  code         String
+  name         String
+  color        String?
+  size         String?
+  colorsJson   String               @default("[]")
+  sizesJson    String               @default("[]")
+  status       String               @default("developing")
+  isSynced     Boolean              @default(false)
+  image        String?
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
+  thumbnail    String?
+  customerName String?
   customFields ProductCustomField[]
   samples      SampleVersion[]
   yarnUsages   YarnUsage[]
-  
+
   @@unique([id, tenantId])
   @@index([tenantId])
 }
 
 model YarnUsage {
-  id           String  @id @default(uuid())
-  color        String  // 关联颜色
-  materialName String  // 纱线名称
-  specification String? // 规格
-  weight       String? // 用料克重
-  unit         String? // 单位 (如克、米、颗)
-  materialColor String? // 原料自身的颜色
-  materialType String? // 原料类型 (如毛料、辅料)
-  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  productId    String
+  id            String  @id @default(uuid())
+  color         String
+  materialName  String
+  specification String?
+  weight        String?
+  productId     String
+  materialColor String?
+  unit          String?
+  materialType  String?
+  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
 }
 
 model ProductCustomField {
   id        String  @id @default(uuid())
-  label     String  // 字段名
-  value     String  // 内容
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  label     String
+  value     String
   productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
 }
 
 model SampleVersion {
   id        String   @id @default(uuid())
-  name      String   // 轮次名，如头样、二样
+  name      String
   createdAt DateTime @default(now())
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId String
-  stages    Stage[]
   logs      Log[]
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stages    Stage[]
 
   @@index([productId])
 }
 
 model Stage {
-  id        String       @id @default(uuid())
-  name      String       // 节点名
-  status    String       @default("pending") // pending | in_progress | completed | failed
-  order     Int          @default(0)         // 排序
-  updatedAt DateTime     @updatedAt
-  sample    SampleVersion @relation(fields: [sampleId], references: [id], onDelete: Cascade)
-  sampleId  String
-  fields    StageField[]
+  id          String        @id @default(uuid())
+  name        String
+  status      String        @default("pending")
+  order       Int           @default(0)
+  updatedAt   DateTime      @updatedAt
+  sampleId    String
   attachments Attachment[]
+  sample      SampleVersion @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  fields      StageField[]
 
   @@index([sampleId])
 }
 
 model StageField {
   id      String @id @default(uuid())
-  label   String // 参数名
-  value   String // 内容
-  type    String @default("text") // 参数类型
-  stage   Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  label   String
+  value   String
+  type    String @default("text")
   stageId String
+  stage   Stage  @relation(fields: [stageId], references: [id], onDelete: Cascade)
 
   @@index([stageId])
 }
@@ -101,18 +99,18 @@ model Attachment {
   fileUrl   String
   fileType  String?
   createdAt DateTime @default(now())
-  stage     Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
   stageId   String
+  stage     Stage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
 
   @@index([stageId])
 }
 
 model StageTemplate {
-  id        String   @id @default(uuid())
-  tenantId  String   @default("default") // 租户标识
-  name      String   
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
+  id        String               @id @default(uuid())
+  tenantId  String               @default("default")
+  name      String
+  order     Int                  @default(0)
+  createdAt DateTime             @default(now())
   fields    StageTemplateField[]
 
   @@unique([id, tenantId])
@@ -122,22 +120,22 @@ model StageTemplate {
 model StageTemplateField {
   id         String        @id @default(uuid())
   templateId String
+  label      String
+  required   Boolean       @default(false)
+  order      Int           @default(0)
   template   StageTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  label      String        // 参数名称
-  required   Boolean       @default(false)  // 是否必填
-  order      Int           @default(0)      // 排序
 
   @@index([templateId])
 }
 
 model Log {
-  id        String        @id @default(uuid())
-  user      String
-  action    String
-  detail    String
-  time      DateTime      @default(now())
-  sample    SampleVersion @relation(fields: [sampleId], references: [id], onDelete: Cascade)
-  sampleId  String
+  id       String        @id @default(uuid())
+  user     String
+  action   String
+  detail   String
+  time     DateTime      @default(now())
+  sampleId String
+  sample   SampleVersion @relation(fields: [sampleId], references: [id], onDelete: Cascade)
 
   @@index([sampleId])
 }

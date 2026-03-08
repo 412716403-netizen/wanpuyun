@@ -57,6 +57,7 @@ export interface Product {
   createdAt: string;
   image?: string;
   thumbnail?: string;
+  customerName?: string;
   samples: SampleVersion[];
 }
 

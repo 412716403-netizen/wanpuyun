@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { X, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Image as ImageIcon, Search, Check, Trash2, ArrowRight, Settings2, Hash, Layers, Palette, ListFilter, CheckCircle2 } from "lucide-react";
+import { X, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Image as ImageIcon, Search, Check, Trash2, ArrowRight, Settings2, Hash, Layers, Palette, ListFilter, CheckCircle2, Users } from "lucide-react";
 import { ProductCustomField, YarnUsage } from "@/types";
 import { SafeImage } from "@/components/SafeImage";
 
@@ -8,6 +8,7 @@ interface CreateProductModalProps {
   newProduct: { 
     code: string; 
     name: string; 
+    customerName?: string;
     colors: string[];
     sizes: string[];
     yarnUsage: YarnUsage[];
@@ -25,11 +26,13 @@ interface CreateProductModalProps {
   sizeDict: { id: string, name: string }[];
   materialDict: { id: string, name: string, spec?: string, color?: string, unit?: string, type?: string }[];
   unitDict?: { id: string, name: string }[];
-  dictLoading?: { colors: boolean, sizes: boolean, materials: boolean, units: boolean };
+  customerDict?: { id: string, name: string, sn?: string, address?: string }[];
+  dictLoading?: { colors: boolean, sizes: boolean, materials: boolean, units: boolean, customers: boolean };
   onFetchColors?: () => void;
   onFetchSizes?: () => void;
   onFetchMaterials?: () => void;
   onFetchUnits?: () => void;
+  onFetchCustomers?: () => void;
   onAddMaterial?: (m: { type: '1'|'2', name: string, color: string, spec: string, unit_id?: string }) => Promise<{ success: boolean, message: string }>;
   onAddDictItem: (type: string, name: string) => Promise<boolean>;
   onAddCustomField: () => void;
@@ -400,6 +403,113 @@ const SelectionModal = ({
   );
 };
 
+const CustomerSearchSelect = ({ 
+  value, 
+  onChange, 
+  customerDict, 
+  onFetch, 
+  isLoading 
+}: { 
+  value: string, 
+  onChange: (name: string) => void, 
+  customerDict: { id: string, name: string, sn?: string, address?: string }[], 
+  onFetch?: () => void, 
+  isLoading: boolean 
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (isOpen && onFetch) onFetch();
+  }, [isOpen]);
+
+  React.useEffect(() => {
+    if (isOpen && inputRef.current) inputRef.current.focus();
+  }, [isOpen]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return customerDict;
+    const q = search.toLowerCase();
+    return customerDict.filter(c => 
+      c.name.toLowerCase().includes(q) || 
+      (c.sn || '').toLowerCase().includes(q) ||
+      (c.address || '').toLowerCase().includes(q)
+    );
+  }, [customerDict, search]);
+
+  return (
+    <div className="relative">
+      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-0.5 mb-1.5 flex items-center gap-1.5">
+        <Users className="w-3 h-3" /> 客户
+      </label>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full px-4 py-3 bg-white border rounded-xl text-sm font-bold cursor-pointer shadow-sm transition-all flex items-center justify-between ${isOpen ? 'border-indigo-300 ring-2 ring-indigo-500/10' : 'border-slate-100 hover:border-slate-200'}`}
+      >
+        <span className={value ? 'text-slate-900' : 'text-slate-400'}>{value || '选择客户（可选）'}</span>
+        <div className="flex items-center gap-1.5">
+          {value && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); onChange(""); }} 
+              className="p-0.5 hover:bg-slate-100 rounded-md transition-colors text-slate-300 hover:text-slate-500"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-[50] top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-top-2 duration-150">
+          <div className="p-3 border-b border-slate-100">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input 
+                ref={inputRef}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="搜索客户名称..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-indigo-300 transition-all"
+              />
+            </div>
+          </div>
+          <div className="max-h-[200px] overflow-y-auto no-scrollbar">
+            {isLoading ? (
+              <div className="py-8 flex flex-col items-center justify-center">
+                <div className="w-6 h-6 border-2 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-2" />
+                <p className="text-[10px] font-bold text-slate-400 animate-pulse">正在从万濮云同步客户...</p>
+              </div>
+            ) : filtered.length > 0 ? (
+              filtered.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => { onChange(c.name); setIsOpen(false); setSearch(""); }}
+                  className={`w-full text-left px-4 py-2.5 flex items-center justify-between hover:bg-indigo-50 transition-colors ${value === c.name ? 'bg-indigo-50' : ''}`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-[10px] font-black text-slate-300 shrink-0">{c.sn}</span>
+                    <span className="text-xs font-bold text-slate-900 truncate">{c.name}</span>
+                    {c.address && <span className="text-[10px] text-slate-400 truncate">{c.address}</span>}
+                  </div>
+                  {value === c.name && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                </button>
+              ))
+            ) : (
+              <div className="py-6 text-center">
+                <p className="text-xs text-slate-400 font-medium">{customerDict.length === 0 ? '暂无客户数据' : '未找到匹配的客户'}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {isOpen && <div className="fixed inset-0 z-[40]" onClick={() => { setIsOpen(false); setSearch(""); }} />}
+    </div>
+  );
+};
+
 export const CreateProductModal = ({
   isEditMode,
   newProduct,
@@ -413,11 +523,13 @@ export const CreateProductModal = ({
   sizeDict,
   materialDict,
   unitDict,
+  customerDict,
   dictLoading,
   onFetchColors,
   onFetchSizes,
   onFetchMaterials,
   onFetchUnits,
+  onFetchCustomers,
   onAddMaterial,
   onAddDictItem,
   onAddCustomField,
@@ -587,6 +699,13 @@ export const CreateProductModal = ({
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-0.5 mb-1.5 block">品名 *</label>
                 <input value={newProduct.name} onChange={(e) => setNewProduct({...newProduct, name: e.target.value})} placeholder="输入品名" className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/10 shadow-sm transition-all" />
               </div>
+              <CustomerSearchSelect
+                value={newProduct.customerName || ""}
+                onChange={(name) => setNewProduct({...newProduct, customerName: name})}
+                customerDict={customerDict || []}
+                onFetch={onFetchCustomers}
+                isLoading={dictLoading?.customers || false}
+              />
               <div className="pt-6 border-t border-slate-200">
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">扩展自定义字段</label>
                 <div className="space-y-3 max-h-[220px] overflow-y-auto no-scrollbar">
