@@ -82,6 +82,10 @@ async function getSession(providedSession?: SessionInfo): Promise<SessionInfo | 
   if (providedSession && providedSession.token && providedSession.sessionCookie) {
     return providedSession;
   }
+  // 快速登录的会话可能没有传统 Cookie，只要有 company 就视为有效
+  if (providedSession?.isQuickLogin && providedSession.company) {
+    return providedSession;
+  }
 
   const cookieStore = await cookies();
   const token = cookieStore.get('external_token')?.value;
@@ -202,43 +206,31 @@ export async function externalLoginQuick(fact: string, username: string, passwor
       timeout: 15000,
     });
 
-    const setCookieHeader = response.headers.get('set-cookie');
     const result = await response.json();
 
     if (result.error === 0) {
+      // 快速登录成功后，用同样的凭证调一次普通登录以获取 fact 后台的正式 Cookie
+      // （普通登录也接受 MD5 密码或由后端统一处理）
+      const factLoginResult = await externalLogin(fact, username, passwordMd5);
+      if (factLoginResult.success && factLoginResult.session) {
+        return {
+          success: true,
+          message: "连接成功",
+          session: {
+            ...factLoginResult.session,
+            isQuickLogin: true,
+          },
+        };
+      }
+
+      // 如果普通登录失败，仍用快速登录的信息（本地数据可用，但字典等外部接口可能不可用）
+      logger.warn("[LoginQuick] 快速登录成功但 fact 普通登录未成功，字典功能可能受限");
       const cookieStore = await cookies();
       const cookieOptions = {
         path: '/',
         maxAge: 60 * 60 * 24 * 7,
         sameSite: 'lax' as const,
       };
-
-      let sessionCookie = "";
-      let token = "";
-
-      if (setCookieHeader) {
-        const valid_cookies = setCookieHeader
-          .split(/,(?=\s*[^,;]+=[^,;]+)/)
-          .map((c: string) => c.trim().split(';')[0])
-          .filter((c: string) => !c.includes('=deleted'));
-        if (valid_cookies.length > 0) {
-          sessionCookie = valid_cookies.join('; ');
-          cookieStore.set('external_session_cookie', sessionCookie, cookieOptions);
-          const match = sessionCookie.match(/advanced-frontend-fact=([^;]+)/);
-          if (match) {
-            token = match[1];
-            cookieStore.set('external_token', token, cookieOptions);
-          }
-        }
-      }
-      // 若响应未带 Set-Cookie 但返回了 session 秘钥，用其构造 Cookie 供后续 fact 请求使用
-      if (!sessionCookie && result.session) {
-        token = result.session;
-        sessionCookie = `advanced-frontend-fact=${result.session}`;
-        cookieStore.set('external_token', token, cookieOptions);
-        cookieStore.set('external_session_cookie', sessionCookie, cookieOptions);
-      }
-
       cookieStore.set('connected_company', fact, cookieOptions);
       cookieStore.set('connected_user_name', username, cookieOptions);
 
@@ -246,8 +238,8 @@ export async function externalLoginQuick(fact: string, username: string, passwor
         success: true,
         message: "连接成功",
         session: {
-          token: token || cookieStore.get('external_token')?.value || "",
-          sessionCookie,
+          token: result.session || "",
+          sessionCookie: result.session ? `advanced-frontend-fact=${result.session}` : "",
           company: fact,
           userName: username,
           isQuickLogin: true,
