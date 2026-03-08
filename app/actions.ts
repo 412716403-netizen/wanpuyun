@@ -82,6 +82,9 @@ async function getSession(providedSession?: SessionInfo): Promise<SessionInfo | 
   if (providedSession && providedSession.token && providedSession.sessionCookie) {
     return providedSession;
   }
+  if (providedSession?.isQuickLogin && providedSession.company) {
+    return providedSession;
+  }
 
   const cookieStore = await cookies();
   const token = cookieStore.get('external_token')?.value;
@@ -110,6 +113,27 @@ async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: 
   } finally {
     clearTimeout(id);
   }
+}
+
+// 快速登录走 /factapp/ + session POST 参数；普通登录走 /fact/ + Cookie
+function buildExternalRequest(
+  session: SessionInfo,
+  factPath: string,
+  factappPath: string,
+  extraBody?: Record<string, string>
+): { url: string; headers: Record<string, string>; bodyParams: URLSearchParams } {
+  const isQuick = !!session.isQuickLogin;
+  const path = isQuick ? factappPath : factPath;
+  const url = `${EXTERNAL_API_BASE_URL}${path}`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
+  if (!isQuick) {
+    headers['Cookie'] = session.sessionCookie;
+  }
+  const bodyParams = new URLSearchParams({ platform: 'H5', ...extraBody });
+  if (isQuick) {
+    bodyParams.set('session', session.token);
+  }
+  return { url, headers, bodyParams };
 }
 
 export async function externalLogin(company: string, user: string, pass: string) {
@@ -202,10 +226,10 @@ export async function externalLoginQuick(fact: string, username: string, passwor
       timeout: 15000,
     });
 
-    const setCookieHeader = response.headers.get('set-cookie');
     const result = await response.json();
 
-    if (result.error === 0) {
+    if (result.error === 0 && result.session) {
+      const token = result.session;
       const cookieStore = await cookies();
       const cookieOptions = {
         path: '/',
@@ -213,41 +237,19 @@ export async function externalLoginQuick(fact: string, username: string, passwor
         sameSite: 'lax' as const,
       };
 
-      let sessionCookie = "";
-      let token = "";
-
-      if (setCookieHeader) {
-        const valid_cookies = setCookieHeader
-          .split(/,(?=\s*[^,;]+=[^,;]+)/)
-          .map((c: string) => c.trim().split(';')[0])
-          .filter((c: string) => !c.includes('=deleted'));
-        if (valid_cookies.length > 0) {
-          sessionCookie = valid_cookies.join('; ');
-          cookieStore.set('external_session_cookie', sessionCookie, cookieOptions);
-          const match = sessionCookie.match(/advanced-frontend-fact=([^;]+)/);
-          if (match) {
-            token = match[1];
-            cookieStore.set('external_token', token, cookieOptions);
-          }
-        }
-      }
-      // 若响应未带 Set-Cookie 但返回了 session 秘钥，用其构造 Cookie 供后续 fact 请求使用
-      if (!sessionCookie && result.session) {
-        token = result.session;
-        sessionCookie = `advanced-frontend-fact=${result.session}`;
-        cookieStore.set('external_token', token, cookieOptions);
-        cookieStore.set('external_session_cookie', sessionCookie, cookieOptions);
-      }
-
+      cookieStore.set('external_token', token, cookieOptions);
+      cookieStore.set('external_session_cookie', '', cookieOptions);
       cookieStore.set('connected_company', fact, cookieOptions);
       cookieStore.set('connected_user_name', username, cookieOptions);
+
+      logger.info(`[LoginQuick] 快速登录成功: company=${fact}, user=${username}, token=${token.slice(0, 8)}...`);
 
       return {
         success: true,
         message: "连接成功",
         session: {
-          token: token || cookieStore.get('external_token')?.value || "",
-          sessionCookie,
+          token,
+          sessionCookie: '',
           company: fact,
           userName: username,
           isQuickLogin: true,
@@ -268,20 +270,17 @@ export async function getExternalColors(sessionInfo?: SessionInfo) {
     const session = await getSession(sessionInfo);
     if (!session) return [];
 
-    const headers: Record<string, string> = { 
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': session.sessionCookie 
-    };
+    const { url, headers, bodyParams } = buildExternalRequest(
+      session, '/fact/dict/list-data.html', '/factapp/dict/list.html',
+      { type: '3', limit: '1000', pageSize: '1000', 'per-page': '1000' }
+    );
 
-    logger.debug("[InitData] 开始从外部系统拉取颜色字典...");
-    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { 
-      method: 'POST', 
-      headers, 
-      body: 'type=3&platform=H5&limit=1000&pageSize=1000&per-page=1000', 
-      timeout: 10000 
-    });
+    logger.debug(`[InitData] 拉取颜色: url=${url}, isQuick=${!!session.isQuickLogin}, token=${session.token?.slice(0,8)}..., body=${bodyParams.toString().slice(0,120)}`);
+    const response = await fetchWithTimeout(url, { method: 'POST', headers, body: bodyParams.toString(), timeout: 10000 });
     const result = await response.json();
-    const colors = (result.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
+    logger.debug(`[InitData] 颜色响应: keys=${Object.keys(result).join(',')}, listDictData=${result.listDictData?.length}, data=${result.data?.length}`);
+    const rows = result.listDictData || result.data || [];
+    const colors = rows.map((item: any) => ({ id: String(item.dict_id), name: item.name }));
     logger.info(`[InitData] 颜色拉取完成: ${colors.length} 条`);
     return colors;
   } catch (error) {
@@ -297,20 +296,16 @@ export async function getExternalSizes(sessionInfo?: SessionInfo) {
     const session = await getSession(sessionInfo);
     if (!session) return [];
 
-    const headers: Record<string, string> = { 
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': session.sessionCookie 
-    };
+    const { url, headers, bodyParams } = buildExternalRequest(
+      session, '/fact/dict/list-data.html', '/factapp/dict/list.html',
+      { type: '2', limit: '1000', pageSize: '1000', 'per-page': '1000' }
+    );
 
     logger.debug("[InitData] 开始从外部系统拉取尺码字典...");
-    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/list-data.html`, { 
-      method: 'POST', 
-      headers, 
-      body: 'type=2&platform=H5&limit=1000&pageSize=1000&per-page=1000', 
-      timeout: 10000 
-    });
+    const response = await fetchWithTimeout(url, { method: 'POST', headers, body: bodyParams.toString(), timeout: 10000 });
     const result = await response.json();
-    const sizes = (result.data || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
+    const rows = result.listDictData || result.data || [];
+    const sizes = rows.map((item: any) => ({ id: String(item.dict_id), name: item.name }));
     logger.info(`[InitData] 尺码拉取完成: ${sizes.length} 条`);
     return sizes;
   } catch (error) {
@@ -326,20 +321,16 @@ export async function getExternalMaterials(sessionInfo?: SessionInfo) {
     const session = await getSession(sessionInfo);
     if (!session) return [];
 
-    const headers: Record<string, string> = { 
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': session.sessionCookie 
-    };
+    const { url, headers, bodyParams } = buildExternalRequest(
+      session, '/fact/material/list-data.html', '/factapp/material/list.html',
+      { limit: '1000', pageSize: '1000', 'per-page': '1000' }
+    );
 
     logger.debug("[InitData] 开始从外部系统拉取物料字典...");
-    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/list-data.html`, { 
-      method: 'POST', 
-      headers, 
-      body: 'platform=H5&limit=1000&pageSize=1000&per-page=1000', 
-      timeout: 10000 
-    });
+    const response = await fetchWithTimeout(url, { method: 'POST', headers, body: bodyParams.toString(), timeout: 10000 });
     const result = await response.json();
-    const materials = (result.data || []).map((item: any) => ({
+    const rows = result.listMaterialData || result.data || [];
+    const materials = rows.map((item: any) => ({
       id: String(item.material_id),
       name: item.name,
       spec: item.spec || "",
@@ -362,20 +353,16 @@ export async function getExternalCustomers(sessionInfo?: SessionInfo) {
     const session = await getSession(sessionInfo);
     if (!session) return [];
 
-    const headers: Record<string, string> = { 
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': session.sessionCookie 
-    };
+    const { url, headers, bodyParams } = buildExternalRequest(
+      session, '/fact/customer/list-data.html', '/factapp/customer/list.html',
+      { limit: '1000', pageSize: '1000', 'per-page': '1000' }
+    );
 
     logger.debug("[InitData] 开始从外部系统拉取客户列表...");
-    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/customer/list-data.html`, { 
-      method: 'POST', 
-      headers, 
-      body: 'platform=H5&limit=1000&pageSize=1000&per-page=1000', 
-      timeout: 10000 
-    });
+    const response = await fetchWithTimeout(url, { method: 'POST', headers, body: bodyParams.toString(), timeout: 10000 });
     const result = await response.json();
-    const customers = (result.data || []).map((item: any) => ({ 
+    const rows = result.listCustomerData || result.data || [];
+    const customers = rows.map((item: any) => ({ 
       id: String(item.customer_id), 
       name: item.name,
       sn: item.sn || "",
@@ -423,6 +410,7 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
     const sizes = JSON.parse(product.sizesJson || "[]");
 
     // 2. 处理图片同步 (如果有图片)
+    const isQuick = !!session.isQuickLogin;
     let remoteImagePath = "";
     if (product.image && product.image.startsWith('data:image')) {
       try {
@@ -432,12 +420,17 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
         const formData = new FormData();
         const blob = new Blob([buffer], { type: contentType });
         formData.append('file', blob, `product_${productId}.${contentType.split('/')[1]}`);
-        
-        const uploadRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/product/upload-product-album.html`, {
+        if (isQuick) formData.append('session', session.token);
+
+        const uploadPath = isQuick ? '/factapp/product/upload-product-album.html' : '/fact/product/upload-product-album.html';
+        const uploadHeaders: Record<string, string> = {};
+        if (!isQuick) uploadHeaders['Cookie'] = session.sessionCookie;
+
+        const uploadRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}${uploadPath}`, {
           method: 'POST',
-          headers: { 'Cookie': session.sessionCookie },
+          headers: uploadHeaders,
           body: formData,
-          timeout: 30000 // 图片上传给 30 秒
+          timeout: 30000
         });
         const uploadResult = await uploadRes.json();
         if (uploadResult.error === 0) {
@@ -504,14 +497,18 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
     });
 
     // 6. 发送 POST 请求
-    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/product/add.html`, {
+    if (isQuick) params.append('session', session.token);
+    const syncPath = isQuick ? '/factapp/product/add.html' : '/fact/product/add.html';
+    const syncHeaders: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    if (!isQuick) {
+      syncHeaders['Cookie'] = session.sessionCookie;
+      syncHeaders['Referer'] = `${EXTERNAL_API_BASE_URL}/fact/product/add.html`;
+      syncHeaders['X-Requested-With'] = 'XMLHttpRequest';
+    }
+
+    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}${syncPath}`, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': session.sessionCookie,
-        'Referer': `${EXTERNAL_API_BASE_URL}/fact/product/add.html`,
-        'X-Requested-With': 'XMLHttpRequest'
-      },
+      headers: syncHeaders,
       body: params.toString(),
       timeout: 20000
     });
@@ -539,6 +536,18 @@ export async function getExternalUnits(sessionInfo?: SessionInfo) {
   try {
     const session = await getSession(sessionInfo);
     if (!session) return [];
+
+    if (session.isQuickLogin) {
+      const { url, headers, bodyParams } = buildExternalRequest(
+        session, '', '/factapp/dict/list.html', { type: '1', limit: '1000' }
+      );
+      logger.debug("[InitData] 快速登录：从 factapp 拉取单位字典...");
+      const resp = await fetchWithTimeout(url, { method: 'POST', headers, body: bodyParams.toString(), timeout: 10000 });
+      const data = await resp.json();
+      const units = (data.listDictData || []).map((item: any) => ({ id: String(item.dict_id), name: item.name }));
+      logger.info(`[InitData] 单位拉取完成: ${units.length} 条`);
+      return units;
+    }
 
     logger.debug("[InitData] 开始从 HTML 提取单位字典...");
     const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/add.html?platform=H5`, {
@@ -581,23 +590,16 @@ export async function addMaterial(params: {
     const session = await getSession(sessionInfo);
     if (!session) return { success: false, message: "请先连接生产系统" };
 
-    const bodyParams = new URLSearchParams({
-      platform: 'H5',
-      type: params.type,
-      name: params.name,
-      color: params.color,
-      spec: params.spec,
-      unit_id: params.unit_id || '0'
-    });
+    const { url, headers, bodyParams } = buildExternalRequest(
+      session, '/fact/material/add.html', '/factapp/material/add.html',
+      { type: params.type, name: params.name, color: params.color, spec: params.spec, unit_id: params.unit_id || '0' }
+    );
 
     logger.debug(`[MaterialAdd] 开始创建原料: 名称=${params.name}, 类型=${params.type}`);
 
-    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/material/add.html`, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': session.sessionCookie
-      },
+      headers,
       body: bodyParams.toString(),
       timeout: 10000
     });
@@ -619,15 +621,17 @@ export async function addDictItem(type: string, name: string, sessionInfo?: Sess
   try {
     const session = await getSession(sessionInfo);
     const typeMap: Record<string, string> = { 'color': '3', 'size': '2', 'material': '1' };
-    const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
-    if (session?.sessionCookie) headers['Cookie'] = session.sessionCookie;
+
+    const { url, headers, bodyParams } = session
+      ? buildExternalRequest(session, '/fact/dict/add.html', '/factapp/dict/add.html', { type: typeMap[type] || type, name })
+      : { url: `${EXTERNAL_API_BASE_URL}/fact/dict/add.html`, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } as Record<string, string>, bodyParams: new URLSearchParams({ type: typeMap[type] || type, name, platform: 'H5' }) };
 
     logger.debug(`[DictAdd] 开始创建字典项: 类型=${type}(${typeMap[type]}), 名称=${name}`);
 
-    const response = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}/fact/dict/add.html`, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers,
-      body: new URLSearchParams({ type: typeMap[type] || type, name, platform: 'H5' }).toString(),
+      body: bodyParams.toString(),
       timeout: 10000
     });
     
@@ -691,7 +695,7 @@ export async function getConnectedInfo(sessionInfo?: SessionInfo) {
   }
 
   // 默认保持现状，除非明确检测到登录页
-  return { isConnected: !!session.token, company: session.company || "", userName: session.userName || "" };
+  return { isConnected: !!(session.token || session.isQuickLogin), company: session.company || "", userName: session.userName || "" };
 }
 
 export async function disconnectExternal() {
@@ -710,7 +714,7 @@ export async function getProducts(sessionInfo?: SessionInfo) {
   try {
     const session = await getSession(sessionInfo);
 
-    if (!session || !session.token || !session.company) {
+    if (!session || !session.company || (!session.token && !session.isQuickLogin)) {
       logger.debug("[getProducts] 未连接，不返回任何数据");
       return [];
     }
@@ -809,7 +813,7 @@ export async function getProductDetail(productId: string, sessionInfo?: SessionI
 export async function getStageTemplates(sessionInfo?: SessionInfo) {
   const session = await getSession(sessionInfo);
   
-  if (!session || !session.token || !session.company) return [];
+  if (!session || !session.company || (!session.token && !session.isQuickLogin)) return [];
   
   return await prisma.stageTemplate.findMany({ 
     where: { tenantId: session.company },
