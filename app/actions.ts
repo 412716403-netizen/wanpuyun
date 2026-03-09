@@ -99,6 +99,15 @@ async function getSession(providedSession?: SessionInfo): Promise<SessionInfo | 
   return null;
 }
 
+// 辅助函数：获取租户ID，session 无效时抛错而非回退到 "default"
+async function requireTenantId(sessionInfo?: SessionInfo): Promise<{ session: SessionInfo; tenantId: string }> {
+  const session = await getSession(sessionInfo);
+  if (!session?.company) {
+    throw new Error('未连接生产系统，请先登录');
+  }
+  return { session, tenantId: session.company };
+}
+
 // 辅助函数：带超时的 fetch
 async function fetchWithTimeout(url: string, options: RequestInit & { timeout?: number }) {
   const { timeout = 10000 } = options; // 默认 10 秒超时
@@ -392,13 +401,12 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
   if (!EXTERNAL_API_BASE_URL) return { success: false, message: "请配置域名" };
   
   try {
-    const session = await getSession(sessionInfo);
-    if (!session) return { success: false, message: "请先连接生产系统" };
+    const { session, tenantId } = await requireTenantId(sessionInfo);
 
-    // 1. 获取本地商品完整数据和外部物料字典
+    // 1. 获取本地商品完整数据和外部物料字典（使用复合键确保租户隔离）
     const [product, initData] = await Promise.all([
       prisma.product.findUnique({
-        where: { id: productId },
+        where: { id_tenantId: { id: productId, tenantId } },
         include: { yarnUsages: true, customFields: true }
       }),
       getGoodsInitData(sessionInfo)
@@ -516,7 +524,7 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
     const result = await response.json();
     
     if (result.error === 0) {
-      await prisma.product.update({ where: { id: productId }, data: { isSynced: true } });
+      await prisma.product.update({ where: { id_tenantId: { id: productId, tenantId } }, data: { isSynced: true } });
       revalidatePath('/');
       return { success: true, message: "同步成功" };
     } else {
@@ -784,8 +792,7 @@ export async function getInitialData(sessionInfo?: SessionInfo) {
 // 获取单个款式的完整详情 (包含附件的 Base64 数据)
 export async function getProductDetail(productId: string, sessionInfo?: SessionInfo) {
   try {
-    const session = await getSession(sessionInfo);
-    const tenantId = session?.company || "default";
+    const { tenantId } = await requireTenantId(sessionInfo);
 
     const dbProduct = await prisma.product.findUnique({
       where: { id_tenantId: { id: productId, tenantId } },
@@ -827,8 +834,7 @@ export async function getStageTemplates(sessionInfo?: SessionInfo) {
 }
 
 export async function deleteStageTemplate(id: string, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
   await prisma.stageTemplate.delete({ 
     where: { id_tenantId: { id, tenantId } } 
   })
@@ -836,8 +842,7 @@ export async function deleteStageTemplate(id: string, sessionInfo?: SessionInfo)
 }
 
 export async function updateStageTemplateOrder(items: { id: string, order: number }[], sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
   
   // 使用 transaction 批量更新
   await prisma.$transaction(
@@ -852,8 +857,7 @@ export async function updateStageTemplateOrder(items: { id: string, order: numbe
 
 // 创建节点模板
 export async function createStageTemplate(name: string, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
   
   // 检查是否已存在同名节点
   const existing = await prisma.stageTemplate.findUnique({
@@ -886,8 +890,7 @@ export async function createStageTemplate(name: string, sessionInfo?: SessionInf
 
 // 更新节点模板名称
 export async function updateStageTemplateName(id: string, name: string, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
   
   // 检查是否已存在同名节点（排除自己）
   const existing = await prisma.stageTemplate.findFirst({
@@ -913,8 +916,7 @@ export async function updateStageTemplateName(id: string, name: string, sessionI
 
 // 移动节点模板排序（上移/下移）
 export async function moveStageTemplate(id: string, direction: 'up' | 'down', sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
   
   const templates = await prisma.stageTemplate.findMany({
     where: { tenantId },
@@ -948,8 +950,14 @@ export async function moveStageTemplate(id: string, direction: 'up' | 'down', se
 
 // 添加节点参数字段
 export async function addStageTemplateField(templateId: string, label: string, required: boolean, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  if (!session) return { success: false, message: '未登录' };
+  const { tenantId } = await requireTenantId(sessionInfo);
+
+  // 租户归属校验：确认模板属于当前租户
+  const template = await prisma.stageTemplate.findUnique({
+    where: { id_tenantId: { id: templateId, tenantId } },
+    select: { id: true }
+  });
+  if (!template) return { success: false, message: '无权操作该模板' };
   
   // 获取当前最大 order
   const maxOrder = await prisma.stageTemplateField.findFirst({
@@ -973,8 +981,16 @@ export async function addStageTemplateField(templateId: string, label: string, r
 
 // 更新节点参数字段
 export async function updateStageTemplateField(fieldId: string, label: string, required: boolean, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  if (!session) return { success: false, message: '未登录' };
+  const { tenantId } = await requireTenantId(sessionInfo);
+
+  // 租户归属校验：field -> template.tenantId
+  const field = await prisma.stageTemplateField.findUnique({
+    where: { id: fieldId },
+    include: { template: { select: { tenantId: true } } }
+  });
+  if (!field || field.template.tenantId !== tenantId) {
+    return { success: false, message: '无权操作该字段' };
+  }
   
   await prisma.stageTemplateField.update({
     where: { id: fieldId },
@@ -987,8 +1003,16 @@ export async function updateStageTemplateField(fieldId: string, label: string, r
 
 // 删除节点参数字段
 export async function deleteStageTemplateField(fieldId: string, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  if (!session) return { success: false, message: '未登录' };
+  const { tenantId } = await requireTenantId(sessionInfo);
+
+  // 租户归属校验
+  const field = await prisma.stageTemplateField.findUnique({
+    where: { id: fieldId },
+    include: { template: { select: { tenantId: true } } }
+  });
+  if (!field || field.template.tenantId !== tenantId) {
+    return { success: false, message: '无权操作该字段' };
+  }
   
   await prisma.stageTemplateField.delete({
     where: { id: fieldId }
@@ -1000,14 +1024,15 @@ export async function deleteStageTemplateField(fieldId: string, sessionInfo?: Se
 
 // 移动节点参数字段排序
 export async function moveStageTemplateField(fieldId: string, direction: 'up' | 'down', sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  if (!session) return { success: false };
+  const { tenantId } = await requireTenantId(sessionInfo);
   
+  // 租户归属校验
   const field = await prisma.stageTemplateField.findUnique({
-    where: { id: fieldId }
+    where: { id: fieldId },
+    include: { template: { select: { tenantId: true } } }
   });
   
-  if (!field) return { success: false };
+  if (!field || field.template.tenantId !== tenantId) return { success: false };
   
   const fields = await prisma.stageTemplateField.findMany({
     where: { templateId: field.templateId },
@@ -1051,8 +1076,7 @@ export async function createProduct(data: {
   customFields: { label: string, value: string }[],
   stages: string[]
 }, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
 
   // 检查款号或品名是否重复
   const existing = await prisma.product.findFirst({
@@ -1147,8 +1171,7 @@ export async function updateProduct(id: string, data: {
   customerName?: string,
   customFields: { label: string, value: string }[]
 }, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { session, tenantId } = await requireTenantId(sessionInfo);
 
   // 检查款号或品名是否与其他款式重复
   const existing = await prisma.product.findFirst({
@@ -1168,6 +1191,12 @@ export async function updateProduct(id: string, data: {
     }
     return { success: false, message: `品名 "${data.name}" 已被其他款式占用` };
   }
+
+  // 先获取旧数据，用于生成变更日志
+  const oldProduct = await prisma.product.findUnique({
+    where: { id_tenantId: { id, tenantId } },
+    select: { code: true, name: true, image: true, customerName: true }
+  });
 
   await prisma.product.update({
     where: { id_tenantId: { id, tenantId } },
@@ -1197,6 +1226,40 @@ export async function updateProduct(id: string, data: {
       }
     }
   })
+
+  // 记录款式编辑日志（写入最新的样衣轮次）
+  try {
+    const latestSample = await prisma.sampleVersion.findFirst({
+      where: { productId: id },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true }
+    });
+    if (latestSample) {
+      const changes: string[] = [];
+      if (oldProduct) {
+        if (oldProduct.code !== data.code) changes.push(`款号: ${oldProduct.code} → ${data.code}`);
+        if (oldProduct.name !== data.name) changes.push(`品名: ${oldProduct.name} → ${data.name}`);
+        if (oldProduct.customerName !== (data.customerName || null)) changes.push(`客户变更`);
+        const hadImage = !!oldProduct.image;
+        const hasImage = !!data.image;
+        if (!hadImage && hasImage) changes.push('新增款式图');
+        else if (hadImage && !hasImage) changes.push('移除款式图');
+        else if (hadImage && hasImage && oldProduct.image !== data.image) changes.push('更换款式图');
+      }
+      const userName = session.userName || '未知用户';
+      await prisma.log.create({
+        data: {
+          sampleId: latestSample.id,
+          user: userName,
+          action: '编辑款式信息',
+          detail: changes.length > 0 ? `[款式编辑] ${changes.join('、')}` : '[款式编辑] 更新了款式规格配置'
+        }
+      });
+    }
+  } catch (logError) {
+    logger.error("[updateProduct] 写入编辑日志失败:", logError);
+  }
+
   revalidatePath('/')
   const updatedProduct = await prisma.product.findUnique({
     where: { id_tenantId: { id, tenantId } },
@@ -1218,6 +1281,17 @@ export async function updateProduct(id: string, data: {
 }
 
 export async function createSampleVersion(productId: string, name: string, sessionInfo?: SessionInfo) {
+  const { session, tenantId } = await requireTenantId(sessionInfo);
+
+  // 租户归属校验
+  const product = await prisma.product.findUnique({
+    where: { id_tenantId: { id: productId, tenantId } },
+    select: { id: true }
+  });
+  if (!product) {
+    throw new Error('无权操作该款式');
+  }
+
   const lastSample = await prisma.sampleVersion.findFirst({
     where: { productId },
     orderBy: { createdAt: 'desc' },
@@ -1236,7 +1310,6 @@ export async function createSampleVersion(productId: string, name: string, sessi
       }
     }
   })
-  const session = await getSession(sessionInfo);
   const userName = session?.userName || '未知用户';
 
   await prisma.log.create({
@@ -1252,10 +1325,13 @@ export async function createSampleVersion(productId: string, name: string, sessi
 }
 
 export async function deleteSampleVersion(sampleId: string, sessionInfo?: SessionInfo): Promise<{ success: boolean; error?: string }> {
+  const { tenantId } = await requireTenantId(sessionInfo);
+
   // 查询样品详情，包括关联的阶段、字段和附件
   const sample = await prisma.sampleVersion.findUnique({
     where: { id: sampleId },
     include: {
+      product: { select: { tenantId: true } },
       stages: {
         include: {
           fields: true,
@@ -1267,6 +1343,11 @@ export async function deleteSampleVersion(sampleId: string, sessionInfo?: Sessio
 
   if (!sample) {
     return { success: false, error: '样品版本不存在' };
+  }
+
+  // 租户归属校验
+  if (sample.product.tenantId !== tenantId) {
+    return { success: false, error: '无权操作该样品' };
   }
 
   // 检查是否有已完成的阶段
@@ -1305,8 +1386,7 @@ export async function deleteSampleVersion(sampleId: string, sessionInfo?: Sessio
 }
 
 export async function toggleProductStatus(id: string, currentStatus: string, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
   await prisma.product.update({
     where: { id_tenantId: { id, tenantId } },
     data: { status: currentStatus === 'developing' ? 'archived' : 'developing' }
@@ -1315,8 +1395,7 @@ export async function toggleProductStatus(id: string, currentStatus: string, ses
 }
 
 export async function toggleSyncStatus(id: string, currentSync: boolean, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
   await prisma.product.update({
     where: { id_tenantId: { id, tenantId } },
     data: { isSynced: !currentSync }
@@ -1325,8 +1404,7 @@ export async function toggleSyncStatus(id: string, currentSync: boolean, session
 }
 
 export async function deleteProduct(id: string, sessionInfo?: SessionInfo) {
-  const session = await getSession(sessionInfo);
-  const tenantId = session?.company || "default";
+  const { tenantId } = await requireTenantId(sessionInfo);
   await prisma.product.delete({ 
     where: { id_tenantId: { id, tenantId } } 
   })
@@ -1343,8 +1421,17 @@ export async function updateStageInfo(params: {
   logDetail: string
 }, sessionInfo?: SessionInfo): Promise<{ success: boolean; message?: string; stage?: any; newLog?: any }> {
   try {
-    const session = await getSession(sessionInfo);
+    const { session, tenantId } = await requireTenantId(sessionInfo);
     const realUserName = session?.userName || params.userName || '未知用户';
+
+    // 租户归属校验：stage -> sample -> product.tenantId
+    const stage = await prisma.stage.findUnique({
+      where: { id: params.stageId },
+      include: { sample: { include: { product: { select: { tenantId: true } } } } }
+    });
+    if (!stage || stage.sample.product.tenantId !== tenantId) {
+      return { success: false, message: '无权操作该节点' };
+    }
 
     // 1. 更新阶段基本信息
     const updatedStage = await prisma.stage.update({
@@ -1445,7 +1532,7 @@ export async function getDailyReport(dateStr: string, sessionInfo?: SessionInfo)
 
     logger.debug(`[getDailyReport] 查询日期: ${dateStr}, 范围: ${dayStart} ~ ${dayEnd}`);
 
-    // 查询该日期内所有状态变更为 completed 的日志
+    // 查询该日期内所有状态变更为 completed 的日志（在 SQL 层面过滤租户）
     const completionLogs = await prisma.log.findMany({
       where: {
         time: {
@@ -1454,6 +1541,11 @@ export async function getDailyReport(dateStr: string, sessionInfo?: SessionInfo)
         },
         detail: {
           contains: '已完成'
+        },
+        sample: {
+          product: {
+            tenantId
+          }
         }
       },
       include: {
@@ -1472,8 +1564,7 @@ export async function getDailyReport(dateStr: string, sessionInfo?: SessionInfo)
     const reportMap = new Map<string, any[]>();
 
     for (const log of completionLogs) {
-      // 过滤掉不属于当前租户的记录
-      if (!log.sample?.product || log.sample.product.tenantId !== tenantId) continue;
+      if (!log.sample?.product) continue;
 
       // 从日志详情中提取节点名称
       const nodeMatch = log.detail.match(/节点:\s*(.+?)\n/);
@@ -1536,7 +1627,7 @@ export async function getStageTrendReport(stageName: string, days = 30, sessionI
 
     logger.debug(`[getStageTrendReport] 查询节点: ${stageName}, 范围: ${days}天`);
 
-    // 查询该节点在该时间段内的所有完成记录
+    // 查询该节点在该时间段内的所有完成记录（在 SQL 层面过滤租户）
     const completionLogs = await prisma.log.findMany({
       where: {
         time: {
@@ -1549,6 +1640,11 @@ export async function getStageTrendReport(stageName: string, days = 30, sessionI
         AND: {
           detail: {
             contains: '已完成'
+          }
+        },
+        sample: {
+          product: {
+            tenantId
           }
         }
       },
@@ -1572,8 +1668,7 @@ export async function getStageTrendReport(stageName: string, days = 30, sessionI
     }>();
 
     for (const log of completionLogs) {
-      // 过滤掉不属于当前租户的记录
-      if (!log.sample?.product || log.sample.product.tenantId !== tenantId) continue;
+      if (!log.sample?.product) continue;
 
       // 提取日期（YYYY-MM-DD 格式）
       const dateKey = log.time.toISOString().split('T')[0];
