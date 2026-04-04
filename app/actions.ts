@@ -482,15 +482,23 @@ async function uploadProductAlbumToExternal(
   const loaded = await loadProductImageBytes(imageRaw, session);
   if ("error" in loaded) {
     logger.warn(`[Sync] 主图无法解析: ${loaded.error}`);
-    return { path: "", error: loaded.error };
+    return { path: "", error: `图片解析失败(${loaded.error})` };
   }
 
   const { buffer, contentType, ext } = loaded;
+  const fileName = `product_${productId}.${ext}`;
+  logger.warn(`[Sync] 准备上传主图: size=${buffer.length}B, type=${contentType}, name=${fileName}`);
 
   try {
     const formData = new FormData();
-    const blob = new Blob([new Uint8Array(buffer)], { type: contentType });
-    formData.append("file", blob, `product_${productId}.${ext}`);
+    const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+    let fileObj: Blob;
+    if (typeof File !== "undefined") {
+      fileObj = new File([ab], fileName, { type: contentType });
+    } else {
+      fileObj = new Blob([ab], { type: contentType });
+    }
+    formData.append("file", fileObj, fileName);
     if (isQuick) formData.append("session", session.token);
 
     const uploadPath = isQuick
@@ -499,7 +507,10 @@ async function uploadProductAlbumToExternal(
     const uploadHeaders: Record<string, string> = {};
     if (!isQuick) uploadHeaders["Cookie"] = session.sessionCookie;
 
-    const uploadRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}${uploadPath}`, {
+    const uploadUrl = `${EXTERNAL_API_BASE_URL}${uploadPath}`;
+    logger.warn(`[Sync] 上传地址: ${uploadUrl}, isQuick=${isQuick}`);
+
+    const uploadRes = await fetchWithTimeout(uploadUrl, {
       method: "POST",
       headers: uploadHeaders,
       body: formData,
@@ -507,26 +518,29 @@ async function uploadProductAlbumToExternal(
     });
 
     const rawUpload = await uploadRes.text();
+    logger.warn(`[Sync] 相册上传响应: status=${uploadRes.status}, body=${rawUpload.slice(0, 500)}`);
+
     let uploadResult: { error?: number; file?: string; message?: string; errors?: { message?: string }[] };
     try {
       uploadResult = JSON.parse(rawUpload) as typeof uploadResult;
     } catch {
-      logger.warn("[Sync] 相册上传响应非 JSON", uploadRes.status, rawUpload.slice(0, 200));
-      return { path: "", error: `bad_response_${uploadRes.status}` };
+      return { path: "", error: `万濮云返回非JSON(HTTP ${uploadRes.status}): ${rawUpload.slice(0, 100)}` };
     }
 
     if (uploadResult.error === 0 && uploadResult.file) {
+      logger.warn(`[Sync] 主图上传成功: ${uploadResult.file}`);
       return { path: uploadResult.file };
     }
     const msg =
       uploadResult.errors?.[0]?.message ||
       uploadResult.message ||
-      `upload_error_${uploadResult.error ?? "unknown"}`;
-    logger.warn("[Sync] 万濮云相册上传未成功:", uploadResult);
+      `万濮云返回错误码 ${uploadResult.error ?? "unknown"}`;
+    logger.warn("[Sync] 万濮云相册上传未成功:", JSON.stringify(uploadResult));
     return { path: "", error: msg };
-  } catch (e) {
-    logger.error("[Sync] 相册上传异常:", e);
-    return { path: "", error: "upload_exception" };
+  } catch (e: any) {
+    const detail = e?.cause?.code || e?.code || e?.message || String(e);
+    logger.error("[Sync] 相册上传异常:", detail, e);
+    return { path: "", error: `上传异常: ${detail}` };
   }
 }
 
@@ -552,10 +566,14 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
 
     // 2. 处理图片同步（data URL / http(s) / 万濮云相对路径；阿里云等环境需服务端拉取再上传）
     let remoteImagePath = "";
+    let imageUploadDetail = "";
     if (product.image && product.image.trim()) {
+      const imgPrefix = product.image.slice(0, 30);
+      logger.warn(`[Sync] 开始处理主图, 长度=${product.image.length}, 前缀=${imgPrefix}...`);
       const up = await uploadProductAlbumToExternal(session, productId, product.image);
       remoteImagePath = up.path;
       if (up.error) {
+        imageUploadDetail = up.error;
         logger.warn("[Sync] 主图未写入万濮云:", up.error);
       }
     }
@@ -641,7 +659,7 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
       const hadImage = !!(product.image && product.image.trim());
       const imageWarning =
         hadImage && !remoteImagePath
-          ? "主图未能上传到生产系统（常见于云端服务器访问图片地址失败、或相册接口超时）。商品其它信息已同步，请在生产系统中补充主图。"
+          ? `主图未能上传到生产系统。\n原因：${imageUploadDetail || "未知"}\n\n商品其它信息已同步，如需图片请在生产系统中手动补充。`
           : undefined;
       return { success: true, message: "同步成功", imageWarning };
     } else {
