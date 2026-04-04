@@ -5,7 +5,8 @@ const nextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '100mb',
-      // 允许这些域名调用 Server Actions（解决 iframe 跨域登录问题）
+      // 允许这些域名调用 Server Actions（解决 iframe 跨域登录问题）。
+      // 部署在阿里云等环境时，必须把浏览器实际访问的站点域名（含 https 端口省略形式）加入此列表。
       allowedOrigins: [
         'zjerp.lengdo.com',
         'kaifa.wanpuxx.com',

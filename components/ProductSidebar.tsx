@@ -40,7 +40,12 @@ const ProductCard = ({ product, isSelected, onSelect }: { product: Product, isSe
       )}
       <div className="flex gap-4">
         <div className="w-16 h-16 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center">
-          {(product.thumbnail || product.image) && (product.thumbnail?.startsWith('data:') || product.image?.startsWith('data:')) ? (
+          {(product.thumbnail || product.image) &&
+          [product.thumbnail, product.image].some(
+            (u) =>
+              u &&
+              (u.startsWith("data:") || u.startsWith("http://") || u.startsWith("https://"))
+          ) ? (
             <SafeImage src={(product.thumbnail || product.image)!} className="w-full h-full object-cover" fallback={<ImageIcon className="w-6 h-6 text-slate-300" />} />
           ) : (
             <ImageIcon className="w-6 h-6 text-slate-300" />

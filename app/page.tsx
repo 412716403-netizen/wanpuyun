@@ -57,6 +57,30 @@ import {
 } from "@/types";
 import { logger } from "@/lib/logger";
 
+const CUSTOM_FIELD_LABELS_KEY = "wanpuyun_custom_field_labels";
+
+function loadStoredCustomFieldLabels(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(CUSTOM_FIELD_LABELS_KEY);
+    if (!raw) return [];
+    const p = JSON.parse(raw) as unknown;
+    return Array.isArray(p)
+      ? p.filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredCustomFieldLabels(labels: string[]) {
+  try {
+    localStorage.setItem(CUSTOM_FIELD_LABELS_KEY, JSON.stringify(labels));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 export default function Dashboard() {
   // --- States ---
   const [products, setProducts] = useState<Product[]>([]);
@@ -285,7 +309,6 @@ export default function Dashboard() {
     yarnUsage: [] as YarnUsage[],
     customFields: [] as ProductCustomField[] 
   });
-  const [newProductFieldInput, setNewProductFieldInput] = useState({ label: "", value: "" });
   const [newProductStages, setNewProductStages] = useState<string[]>([]);
   const [stageInput, setStageInput] = useState("");
 
@@ -442,14 +465,7 @@ export default function Dashboard() {
     setIsSubmitting(true);
     
     try {
-      let finalCustomFields = [...newProduct.customFields];
-      if (newProductFieldInput.label.trim()) {
-        finalCustomFields.push({
-          id: `cf-auto-${Date.now()}`,
-          label: newProductFieldInput.label.trim(),
-          value: newProductFieldInput.value.trim()
-        });
-      }
+      const finalCustomFields = [...newProduct.customFields];
 
       if (isEditMode && selectedProductId) {
         const res = await updateProduct(selectedProductId, {
@@ -466,6 +482,9 @@ export default function Dashboard() {
         
         if (res && res.success && res.product) {
           const updatedProduct = res.product as Product;
+          saveStoredCustomFieldLabels(
+            finalCustomFields.map((f) => f.label.trim()).filter(Boolean)
+          );
           // 直接更新本地状态，避免全局刷新
           setProducts(prev => prev.map(p => p.id === selectedProductId ? updatedProduct : p));
         } else if (res && !res.success) {
@@ -496,6 +515,9 @@ export default function Dashboard() {
         // 直接合并新产品到列表，并选中它
         if (res.product) {
           const newProd = res.product as Product;
+          saveStoredCustomFieldLabels(
+            finalCustomFields.map((f) => f.label.trim()).filter(Boolean)
+          );
           setProducts(prev => [newProd, ...prev]);
           setSelectedProductId(newProd.id);
           if (newProd.samples && newProd.samples.length > 0) {
@@ -506,7 +528,6 @@ export default function Dashboard() {
       setIsCreateModalOpen(false);
       setIsEditMode(false);
       setNewProduct({ code: "", name: "", image: "", thumbnail: "", customerName: "", colors: [], sizes: [], yarnUsage: [], customFields: [] });
-      setNewProductFieldInput({ label: "", value: "" }); 
       setNewProductStages([]);
     } catch (error: any) {
       logger.error("Save failed:", error);
@@ -714,22 +735,50 @@ export default function Dashboard() {
     }
   };
 
+  const applyCustomFieldLabels = (labels: string[]) => {
+    const unique = [...new Set(labels.map((l) => l.trim()).filter(Boolean))];
+    saveStoredCustomFieldLabels(unique);
+    setNewProduct((prev) => {
+      const valueByLabel = new Map(prev.customFields.map((f) => [f.label, f.value]));
+      const idByLabel = new Map(prev.customFields.map((f) => [f.label, f.id]));
+      const next: ProductCustomField[] = unique.map((label, i) => ({
+        id: idByLabel.get(label) ?? `cf-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}`,
+        label,
+        value: valueByLabel.get(label) ?? "",
+      }));
+      return { ...prev, customFields: next };
+    });
+  };
+
   const handleCreateOpen = () => {
     setIsEditMode(false);
     const lastProduct = products[0];
-    const initialCustomFields = lastProduct 
-      ? lastProduct.customFields.map(cf => ({ id: `cf-${Date.now()}-${Math.random()}`, label: cf.label, value: "" }))
-      : [];
-    setNewProduct({ 
-      code: "", 
-      name: "", 
-      image: "", 
+    const fromProduct = (lastProduct?.customFields ?? [])
+      .map((cf) => cf.label.trim())
+      .filter(Boolean);
+    const fromStore = loadStoredCustomFieldLabels();
+    const seen = new Set<string>();
+    const merged: string[] = [];
+    for (const l of [...fromStore, ...fromProduct]) {
+      if (seen.has(l)) continue;
+      seen.add(l);
+      merged.push(l);
+    }
+    const initialCustomFields: ProductCustomField[] = merged.map((label, i) => ({
+      id: `cf-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 9)}`,
+      label,
+      value: "",
+    }));
+    setNewProduct({
+      code: "",
+      name: "",
+      image: "",
       thumbnail: "",
       customerName: "",
       colors: [],
       sizes: [],
       yarnUsage: [],
-      customFields: initialCustomFields 
+      customFields: initialCustomFields,
     });
     setNewProductStages([]);
     setIsCreateModalOpen(true);
@@ -825,7 +874,11 @@ export default function Dashboard() {
             try {
               const res = await syncProductToExternal(id, sessionInfo);
               if (res.success) {
-                alert("🎉 同步成功！商品已在生产管理系统中创建。");
+                let msg = "🎉 同步成功！商品已在生产管理系统中创建。";
+                if ("imageWarning" in res && res.imageWarning) {
+                  msg += `\n\n⚠ ${res.imageWarning}`;
+                }
+                alert(msg);
                 await refreshData();
               } else {
                 alert(`❌ 同步失败：${res.message}`);
@@ -901,8 +954,6 @@ export default function Dashboard() {
           isEditMode={isEditMode}
           newProduct={newProduct}
           setNewProduct={setNewProduct}
-          newProductFieldInput={newProductFieldInput}
-          setNewProductFieldInput={setNewProductFieldInput}
           newProductStages={newProductStages}
           stageInput={stageInput}
           setStageInput={setStageInput}
@@ -931,14 +982,15 @@ export default function Dashboard() {
             }
             return ok;
           }}
-          onAddCustomField={() => {
-            if (newProductFieldInput.label.trim()) {
-              setNewProduct({ ...newProduct, customFields: [...newProduct.customFields, { id: `cf-${Date.now()}`, label: newProductFieldInput.label.trim(), value: newProductFieldInput.value.trim() }] });
-              setNewProductFieldInput({ label: "", value: "" });
-            }
-          }}
-          onRemoveCustomField={(id) => setNewProduct({ ...newProduct, customFields: newProduct.customFields.filter(f => f.id !== id) })}
-          onUpdateCustomField={(id, field, val) => setNewProduct({ ...newProduct, customFields: newProduct.customFields.map(f => f.id === id ? { ...f, [field]: val } : f) })}
+          onApplyCustomFieldLabels={applyCustomFieldLabels}
+          onUpdateCustomFieldValue={(id, val) =>
+            setNewProduct((prev) => ({
+              ...prev,
+              customFields: prev.customFields.map((f) =>
+                f.id === id ? { ...f, value: val } : f
+              ),
+            }))
+          }
           onAddStage={(name) => { 
             const stageName = typeof name === 'string' ? name : stageInput;
             if (stageName.trim()) { 

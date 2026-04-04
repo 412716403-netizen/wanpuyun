@@ -397,6 +397,139 @@ export async function getGoodsInitData(sessionInfo?: SessionInfo) {
   return { colors, sizes, materials };
 }
 
+const SYNC_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+
+/** 将本地款式主图转为二进制，支持 data URL、绝对 URL、万濮云站内相对路径 */
+async function loadProductImageBytes(
+  imageRaw: string,
+  session: SessionInfo
+): Promise<{ buffer: Buffer; contentType: string; ext: string } | { error: string }> {
+  const trimmed = imageRaw.trim();
+  if (!trimmed) return { error: "empty" };
+
+  if (trimmed.startsWith("data:image")) {
+    try {
+      const comma = trimmed.indexOf(",");
+      if (comma < 0) return { error: "bad_data_url" };
+      const meta = trimmed.slice(0, comma);
+      const base64Data = trimmed.slice(comma + 1);
+      const contentType = meta.split(":")[1]?.split(";")[0] || "image/jpeg";
+      const buffer = Buffer.from(base64Data, "base64");
+      if (buffer.length > SYNC_IMAGE_MAX_BYTES) return { error: "too_large" };
+      const ext = (contentType.split("/")[1] || "jpg").replace("jpeg", "jpg");
+      return { buffer, contentType, ext };
+    } catch {
+      return { error: "base64_parse" };
+    }
+  }
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const imgRes = await fetchWithTimeout(trimmed, {
+        method: "GET",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; WanpuyunSync/1.0)",
+          Accept: "image/*,*/*;q=0.8",
+        },
+        timeout: 60000,
+      });
+      if (!imgRes.ok) return { error: `http_${imgRes.status}` };
+      const buffer = Buffer.from(await imgRes.arrayBuffer());
+      if (buffer.length > SYNC_IMAGE_MAX_BYTES) return { error: "too_large" };
+      let contentType = imgRes.headers.get("content-type")?.split(";")[0].trim() || "image/jpeg";
+      if (!contentType.startsWith("image/")) contentType = "image/jpeg";
+      const ext = (contentType.split("/")[1] || "jpg").replace("jpeg", "jpg");
+      return { buffer, contentType, ext };
+    } catch (e) {
+      logger.error("[Sync] 拉取 http(s) 主图失败:", e);
+      return { error: "fetch_http_failed" };
+    }
+  }
+
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
+    const isQuick = !!session.isQuickLogin;
+    const abs = `${EXTERNAL_API_BASE_URL}${trimmed}`;
+    try {
+      const headers: Record<string, string> = {
+        "User-Agent": "Mozilla/5.0 (compatible; WanpuyunSync/1.0)",
+        Accept: "image/*,*/*;q=0.8",
+      };
+      if (!isQuick) headers["Cookie"] = session.sessionCookie;
+      const imgRes = await fetchWithTimeout(abs, { method: "GET", headers, timeout: 60000 });
+      if (!imgRes.ok) return { error: `relative_${imgRes.status}` };
+      const buffer = Buffer.from(await imgRes.arrayBuffer());
+      if (buffer.length > SYNC_IMAGE_MAX_BYTES) return { error: "too_large" };
+      let contentType = imgRes.headers.get("content-type")?.split(";")[0].trim() || "image/jpeg";
+      if (!contentType.startsWith("image/")) contentType = "image/jpeg";
+      const ext = (contentType.split("/")[1] || "jpg").replace("jpeg", "jpg");
+      return { buffer, contentType, ext };
+    } catch (e) {
+      logger.error("[Sync] 拉取相对路径主图失败:", e);
+      return { error: "fetch_relative_failed" };
+    }
+  }
+
+  return { error: "unsupported_image_format" };
+}
+
+/** 上传主图到万濮云相册接口，返回远端路径 */
+async function uploadProductAlbumToExternal(
+  session: SessionInfo,
+  productId: string,
+  imageRaw: string
+): Promise<{ path: string; error?: string }> {
+  const isQuick = !!session.isQuickLogin;
+  const loaded = await loadProductImageBytes(imageRaw, session);
+  if ("error" in loaded) {
+    logger.warn(`[Sync] 主图无法解析: ${loaded.error}`);
+    return { path: "", error: loaded.error };
+  }
+
+  const { buffer, contentType, ext } = loaded;
+
+  try {
+    const formData = new FormData();
+    const blob = new Blob([new Uint8Array(buffer)], { type: contentType });
+    formData.append("file", blob, `product_${productId}.${ext}`);
+    if (isQuick) formData.append("session", session.token);
+
+    const uploadPath = isQuick
+      ? "/factapp/product/upload-product-album.html"
+      : "/fact/product/upload-product-album.html";
+    const uploadHeaders: Record<string, string> = {};
+    if (!isQuick) uploadHeaders["Cookie"] = session.sessionCookie;
+
+    const uploadRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}${uploadPath}`, {
+      method: "POST",
+      headers: uploadHeaders,
+      body: formData,
+      timeout: 120000,
+    });
+
+    const rawUpload = await uploadRes.text();
+    let uploadResult: { error?: number; file?: string; message?: string; errors?: { message?: string }[] };
+    try {
+      uploadResult = JSON.parse(rawUpload) as typeof uploadResult;
+    } catch {
+      logger.warn("[Sync] 相册上传响应非 JSON", uploadRes.status, rawUpload.slice(0, 200));
+      return { path: "", error: `bad_response_${uploadRes.status}` };
+    }
+
+    if (uploadResult.error === 0 && uploadResult.file) {
+      return { path: uploadResult.file };
+    }
+    const msg =
+      uploadResult.errors?.[0]?.message ||
+      uploadResult.message ||
+      `upload_error_${uploadResult.error ?? "unknown"}`;
+    logger.warn("[Sync] 万濮云相册上传未成功:", uploadResult);
+    return { path: "", error: msg };
+  } catch (e) {
+    logger.error("[Sync] 相册上传异常:", e);
+    return { path: "", error: "upload_exception" };
+  }
+}
+
 export async function syncProductToExternal(productId: string, sessionInfo?: SessionInfo) {
   if (!EXTERNAL_API_BASE_URL) return { success: false, message: "请配置域名" };
   
@@ -417,35 +550,13 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
     const colors = JSON.parse(product.colorsJson || "[]");
     const sizes = JSON.parse(product.sizesJson || "[]");
 
-    // 2. 处理图片同步 (如果有图片)
-    const isQuick = !!session.isQuickLogin;
+    // 2. 处理图片同步（data URL / http(s) / 万濮云相对路径；阿里云等环境需服务端拉取再上传）
     let remoteImagePath = "";
-    if (product.image && product.image.startsWith('data:image')) {
-      try {
-        const base64Data = product.image.split(',')[1];
-        const contentType = product.image.split(',')[0].split(':')[1].split(';')[0];
-        const buffer = Buffer.from(base64Data, 'base64');
-        const formData = new FormData();
-        const blob = new Blob([buffer], { type: contentType });
-        formData.append('file', blob, `product_${productId}.${contentType.split('/')[1]}`);
-        if (isQuick) formData.append('session', session.token);
-
-        const uploadPath = isQuick ? '/factapp/product/upload-product-album.html' : '/fact/product/upload-product-album.html';
-        const uploadHeaders: Record<string, string> = {};
-        if (!isQuick) uploadHeaders['Cookie'] = session.sessionCookie;
-
-        const uploadRes = await fetchWithTimeout(`${EXTERNAL_API_BASE_URL}${uploadPath}`, {
-          method: 'POST',
-          headers: uploadHeaders,
-          body: formData,
-          timeout: 30000
-        });
-        const uploadResult = await uploadRes.json();
-        if (uploadResult.error === 0) {
-          remoteImagePath = uploadResult.file;
-        }
-      } catch (uploadError) {
-        logger.error("[Sync] 图片上传失败:", uploadError);
+    if (product.image && product.image.trim()) {
+      const up = await uploadProductAlbumToExternal(session, productId, product.image);
+      remoteImagePath = up.path;
+      if (up.error) {
+        logger.warn("[Sync] 主图未写入万濮云:", up.error);
       }
     }
 
@@ -505,6 +616,7 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
     });
 
     // 6. 发送 POST 请求
+    const isQuick = !!session.isQuickLogin;
     if (isQuick) params.append('session', session.token);
     const syncPath = isQuick ? '/factapp/product/add.html' : '/fact/product/add.html';
     const syncHeaders: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
@@ -526,7 +638,12 @@ export async function syncProductToExternal(productId: string, sessionInfo?: Ses
     if (result.error === 0) {
       await prisma.product.update({ where: { id_tenantId: { id: productId, tenantId } }, data: { isSynced: true } });
       revalidatePath('/');
-      return { success: true, message: "同步成功" };
+      const hadImage = !!(product.image && product.image.trim());
+      const imageWarning =
+        hadImage && !remoteImagePath
+          ? "主图未能上传到生产系统（常见于云端服务器访问图片地址失败、或相册接口超时）。商品其它信息已同步，请在生产系统中补充主图。"
+          : undefined;
+      return { success: true, message: "同步成功", imageWarning };
     } else {
       const errorMsg = result.errors?.[0]?.message || result.message || "同步失败";
       return { success: false, message: errorMsg };
@@ -741,6 +858,9 @@ export async function getProducts(sessionInfo?: SessionInfo) {
         thumbnail: true,
         customerName: true,
         createdAt: true,
+        customFields: {
+          select: { id: true, label: true, value: true }
+        },
         samples: {
           select: {
             id: true,

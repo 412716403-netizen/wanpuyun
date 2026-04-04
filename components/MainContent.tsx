@@ -117,7 +117,10 @@ export const MainContent = ({
           onClick={() => selectedProduct.image && setShowFullImage(true)}
           className={`w-64 h-64 bg-slate-50 rounded-[32px] overflow-hidden relative shadow-xl shadow-slate-200/50 flex-shrink-0 flex items-center justify-center transition-all ${selectedProduct.image ? 'cursor-zoom-in hover:scale-[1.02] active:scale-[0.98]' : ''}`}
         >
-          {selectedProduct.image && selectedProduct.image.startsWith('data:') ? (
+          {selectedProduct.image &&
+          (selectedProduct.image.startsWith("data:") ||
+            selectedProduct.image.startsWith("http://") ||
+            selectedProduct.image.startsWith("https://")) ? (
             <SafeImage src={selectedProduct.image} className="w-full h-full object-cover" fallback={
               <div className="flex flex-col items-center text-slate-300">
                 <ImageIcon className="w-16 h-16 mb-2 opacity-20" />

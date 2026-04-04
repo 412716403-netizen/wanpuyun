@@ -17,8 +17,6 @@ interface CreateProductModalProps {
     thumbnail?: string;
   };
   setNewProduct: (p: any) => void;
-  newProductFieldInput: { label: string; value: string };
-  setNewProductFieldInput: (f: any) => void;
   newProductStages: string[];
   stageInput: string;
   setStageInput: (s: string) => void;
@@ -35,9 +33,8 @@ interface CreateProductModalProps {
   onFetchCustomers?: () => void;
   onAddMaterial?: (m: { type: '1'|'2', name: string, color: string, spec: string, unit_id?: string }) => Promise<{ success: boolean, message: string }>;
   onAddDictItem: (type: string, name: string) => Promise<boolean>;
-  onAddCustomField: () => void;
-  onRemoveCustomField: (id: string) => void;
-  onUpdateCustomField: (id: string, field: 'label' | 'value', val: string) => void;
+  onApplyCustomFieldLabels: (labels: string[]) => void;
+  onUpdateCustomFieldValue: (id: string, value: string) => void;
   onAddStage: (name?: string) => void;
   onRemoveStage: (idx: number) => void;
   onMoveStage: (idx: number, dir: 'up' | 'down') => void;
@@ -510,12 +507,122 @@ const CustomerSearchSelect = ({
   );
 };
 
+const CustomFieldsSettingsModal = ({
+  isOpen,
+  onClose,
+  fieldLabels,
+  onConfirm,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  fieldLabels: string[];
+  onConfirm: (labels: string[]) => void;
+}) => {
+  const [rows, setRows] = useState<string[]>([]);
+  const seedKey = fieldLabels.join("\u0001");
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    setRows(fieldLabels.length > 0 ? [...fieldLabels] : [""]);
+  }, [isOpen, seedKey]);
+
+  const handleConfirm = () => {
+    const labels: string[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const t = row.trim();
+      if (!t || seen.has(t)) continue;
+      seen.add(t);
+      labels.push(t);
+    }
+    onConfirm(labels);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-slate-900/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-md rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600 shrink-0">
+              <Settings2 className="w-5 h-5" />
+            </div>
+            <h4 className="text-lg font-black text-slate-900 tracking-tight truncate">设置扩展字段</h4>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 transition-colors shrink-0">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <p className="px-6 pt-4 text-xs text-slate-500 font-medium leading-relaxed">
+          在此添加或删除字段名称；主界面仅填写各字段的内容。已保存的款式会同步更新本地字段模板，下次新建时自动带出。
+        </p>
+        <div className="p-6 space-y-3 max-h-[min(52vh,280px)] overflow-y-auto no-scrollbar">
+          {rows.map((row, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                value={row}
+                onChange={(e) => {
+                  const next = [...rows];
+                  next[i] = e.target.value;
+                  setRows(next);
+                }}
+                placeholder="字段名称，如：针型"
+                className="flex-1 min-w-0 px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/15"
+              />
+              <button
+                type="button"
+                onClick={() => setRows(rows.filter((_, j) => j !== i))}
+                className="p-2.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors shrink-0"
+                aria-label="删除"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="px-6 pb-6 pt-0 flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => setRows([...rows, ""])}
+            className="w-full py-3 rounded-xl border-2 border-dashed border-slate-200 text-xs font-bold text-slate-500 hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50/30 transition-all flex items-center justify-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            添加字段
+          </button>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 rounded-xl font-bold text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              className="flex-1 py-3 rounded-xl font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-colors"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const CreateProductModal = ({
   isEditMode,
   newProduct,
   setNewProduct,
-  newProductFieldInput,
-  setNewProductFieldInput,
   newProductStages,
   stageInput,
   setStageInput,
@@ -532,9 +639,8 @@ export const CreateProductModal = ({
   onFetchCustomers,
   onAddMaterial,
   onAddDictItem,
-  onAddCustomField,
-  onRemoveCustomField,
-  onUpdateCustomField,
+  onApplyCustomFieldLabels,
+  onUpdateCustomFieldValue,
   onAddStage,
   onRemoveStage,
   onMoveStage,
@@ -548,6 +654,7 @@ export const CreateProductModal = ({
   const [activeColorForYarn, setActiveColorForYarn] = useState<string | null>(null);
   const [selectionType, setSelectionType] = useState<'color' | 'size' | 'yarn' | null>(null);
   const [draggedTemplateId, setDraggedTemplateId] = useState<string | null>(null);
+  const [customFieldsSettingsOpen, setCustomFieldsSettingsOpen] = useState(false);
 
   // 当选择器打开时，按需加载对应的字典数据
   React.useEffect(() => {
@@ -707,38 +814,44 @@ export const CreateProductModal = ({
                 isLoading={dictLoading?.customers || false}
               />
               <div className="pt-6 border-t border-slate-200">
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">扩展自定义字段</label>
-                <div className="space-y-3 max-h-[220px] overflow-y-auto no-scrollbar">
-                  {newProduct.customFields.map(field => (
-                    <div key={field.id} className="bg-white rounded-xl flex items-center border border-slate-100 group/field relative h-11 shadow-sm overflow-hidden">
-                      <input className="w-[80px] shrink-0 bg-slate-50 h-full px-3 text-xs font-bold text-slate-400 rounded-l-xl border-r border-slate-100 outline-none focus:bg-white transition-colors" value={field.label} onChange={(e) => onUpdateCustomField(field.id, 'label', e.target.value)} />
-                      <input className="flex-1 min-w-0 px-4 text-sm font-bold text-slate-700 outline-none bg-transparent" value={field.value} onChange={(e) => onUpdateCustomField(field.id, 'value', e.target.value)} />
-                      <button onClick={() => onRemoveCustomField(field.id)} className="absolute right-2 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover/field:opacity-100 transition-all shrink-0"><X className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                  <div className="flex items-center bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/30 transition-all overflow-hidden h-11 shrink-0">
-                    <input 
-                      placeholder="字段名" 
-                      className="w-20 bg-transparent px-3 text-xs font-bold outline-none text-slate-500 placeholder:text-slate-300 shrink-0" 
-                      value={newProductFieldInput.label} 
-                      onChange={(e) => setNewProductFieldInput({...newProductFieldInput, label: e.target.value})} 
-                    />
-                    <div className="w-px h-4 bg-slate-200 shrink-0" />
-                    <input 
-                      placeholder="输入内容..." 
-                      className="flex-1 bg-transparent px-3 text-xs font-medium outline-none text-slate-600 placeholder:text-slate-300 min-w-0" 
-                      value={newProductFieldInput.value} 
-                      onChange={(e) => setNewProductFieldInput({...newProductFieldInput, value: e.target.value})} 
-                    />
-                    <button 
-                      onClick={onAddCustomField} 
-                      className="bg-indigo-600 text-white h-full px-4 flex items-center justify-center hover:bg-indigo-700 active:bg-indigo-800 transition-all shrink-0"
-                      title="点击添加"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
-                  </div>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">扩展自定义字段</label>
+                  <button
+                    type="button"
+                    onClick={() => setCustomFieldsSettingsOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 transition-colors shrink-0"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" />
+                    设置
+                  </button>
                 </div>
+                {newProduct.customFields.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-medium leading-relaxed py-2">
+                    暂无扩展字段。点击「设置」添加字段名称，再在下方填写内容。
+                  </p>
+                ) : (
+                  <div className="space-y-2.5 max-h-[220px] overflow-y-auto no-scrollbar">
+                    {newProduct.customFields.map((field) => (
+                      <div
+                        key={field.id}
+                        className="bg-white rounded-xl flex items-stretch border border-slate-100 shadow-sm overflow-hidden min-h-11"
+                      >
+                        <span
+                          className="w-[88px] shrink-0 bg-slate-50 px-3 py-2.5 text-[11px] font-black text-slate-500 border-r border-slate-100 flex items-center leading-tight"
+                          title={field.label}
+                        >
+                          {field.label}
+                        </span>
+                        <input
+                          className="flex-1 min-w-0 px-3 py-2.5 text-sm font-bold text-slate-700 outline-none bg-transparent placeholder:text-slate-300"
+                          value={field.value}
+                          onChange={(e) => onUpdateCustomFieldValue(field.id, e.target.value)}
+                          placeholder="填写内容"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -978,6 +1091,12 @@ export const CreateProductModal = ({
           onFetchUnits={onFetchUnits}
           placeholder="搜索原料、规格 or 色号..."
           isLoading={dictLoading?.materials}
+        />
+        <CustomFieldsSettingsModal
+          isOpen={customFieldsSettingsOpen}
+          onClose={() => setCustomFieldsSettingsOpen(false)}
+          fieldLabels={newProduct.customFields.map((f) => f.label)}
+          onConfirm={onApplyCustomFieldLabels}
         />
       </div>
     </div>
