@@ -520,7 +520,9 @@ async function uploadProductAlbumToExternal(
   logger.warn(`[Sync] 准备上传主图: size=${buffer.length}B, type=${contentType}, name=${fileName}`);
 
   try {
-    const extraFields: { name: string; value: string }[] = [];
+    const extraFields: { name: string; value: string }[] = [
+      { name: "platform", value: "H5" },
+    ];
     if (isQuick) extraFields.push({ name: "session", value: session.token });
 
     const { body: multipartBody, contentType: mpContentType } = buildMultipartBody(
@@ -533,6 +535,8 @@ async function uploadProductAlbumToExternal(
       : "/fact/product/upload-product-album.html";
     const uploadHeaders: Record<string, string> = {
       "Content-Type": mpContentType,
+      "Referer": `${EXTERNAL_API_BASE_URL}/fact/product/add.html`,
+      "X-Requested-With": "XMLHttpRequest",
     };
     if (!isQuick) uploadHeaders["Cookie"] = session.sessionCookie;
 
