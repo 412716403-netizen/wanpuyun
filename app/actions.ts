@@ -472,6 +472,36 @@ async function loadProductImageBytes(
   return { error: "unsupported_image_format" };
 }
 
+/**
+ * 手动构建 multipart/form-data 请求体（纯 Buffer 拼接）。
+ * 避免 Node.js 20 standalone 模式下原生 FormData/Blob 的兼容性问题。
+ */
+function buildMultipartBody(
+  fields: { name: string; value: string }[],
+  file: { name: string; fieldName: string; buffer: Buffer; contentType: string }
+): { body: Buffer; contentType: string } {
+  const boundary = `----WanpuyunUpload${Date.now()}${Math.random().toString(36).slice(2)}`;
+  const CRLF = "\r\n";
+  const parts: Buffer[] = [];
+
+  for (const f of fields) {
+    parts.push(Buffer.from(
+      `--${boundary}${CRLF}Content-Disposition: form-data; name="${f.name}"${CRLF}${CRLF}${f.value}${CRLF}`
+    ));
+  }
+
+  parts.push(Buffer.from(
+    `--${boundary}${CRLF}Content-Disposition: form-data; name="${file.fieldName}"; filename="${file.name}"${CRLF}Content-Type: ${file.contentType}${CRLF}${CRLF}`
+  ));
+  parts.push(file.buffer);
+  parts.push(Buffer.from(`${CRLF}--${boundary}--${CRLF}`));
+
+  return {
+    body: Buffer.concat(parts),
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  };
+}
+
 /** 上传主图到万濮云相册接口，返回远端路径 */
 async function uploadProductAlbumToExternal(
   session: SessionInfo,
@@ -490,30 +520,29 @@ async function uploadProductAlbumToExternal(
   logger.warn(`[Sync] 准备上传主图: size=${buffer.length}B, type=${contentType}, name=${fileName}`);
 
   try {
-    const formData = new FormData();
-    const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-    let fileObj: Blob;
-    if (typeof File !== "undefined") {
-      fileObj = new File([ab], fileName, { type: contentType });
-    } else {
-      fileObj = new Blob([ab], { type: contentType });
-    }
-    formData.append("file", fileObj, fileName);
-    if (isQuick) formData.append("session", session.token);
+    const extraFields: { name: string; value: string }[] = [];
+    if (isQuick) extraFields.push({ name: "session", value: session.token });
+
+    const { body: multipartBody, contentType: mpContentType } = buildMultipartBody(
+      extraFields,
+      { name: fileName, fieldName: "file", buffer, contentType }
+    );
 
     const uploadPath = isQuick
       ? "/factapp/product/upload-product-album.html"
       : "/fact/product/upload-product-album.html";
-    const uploadHeaders: Record<string, string> = {};
+    const uploadHeaders: Record<string, string> = {
+      "Content-Type": mpContentType,
+    };
     if (!isQuick) uploadHeaders["Cookie"] = session.sessionCookie;
 
     const uploadUrl = `${EXTERNAL_API_BASE_URL}${uploadPath}`;
-    logger.warn(`[Sync] 上传地址: ${uploadUrl}, isQuick=${isQuick}`);
+    logger.warn(`[Sync] 上传地址: ${uploadUrl}, bodySize=${multipartBody.length}B, isQuick=${isQuick}`);
 
     const uploadRes = await fetchWithTimeout(uploadUrl, {
       method: "POST",
       headers: uploadHeaders,
-      body: formData,
+      body: new Uint8Array(multipartBody) as any,
       timeout: 120000,
     });
 
